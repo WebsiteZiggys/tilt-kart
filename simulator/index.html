@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tilt Kart — 64×32 Matrix Portal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&family=Tektur:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body>
+    <!--
+      THESIS: The page is the physical 64x32 panel, not a website around a game.
+      OWN-WORLD: Matte ABS bezel, plywood bench, silkscreen legends, sunset LEDs.
+      STORY: Pick up the ADABOX matrix and race by tilting it.
+      FIRST VIEWPORT: Giant panel centered; wordmark stamped above; controls below.
+      FORM: Workbench specimen, not arcade cabinet chrome.
+      FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+    -->
+    <main class="bench">
+      <header class="stamp">
+        <p class="sku">Adafruit #4812 · Matrix Portal M4</p>
+        <h1>TILT KART</h1>
+        <p class="tag">64×32 RGB · tilt to steer · 3 laps</p>
+      </header>
+
+      <section class="panel" aria-label="LED matrix simulator">
+        <div class="bezel">
+          <span class="screw" aria-hidden="true"></span>
+          <span class="screw" aria-hidden="true"></span>
+          <span class="screw" aria-hidden="true"></span>
+          <span class="screw" aria-hidden="true"></span>
+          <div class="mask">
+            <canvas id="matrix" width="64" height="32"></canvas>
+          </div>
+          <p class="legend">HUB75 · 64 × 32 · 4mm</p>
+        </div>
+      </section>
+
+      <p id="status" class="status">Enter or click to race</p>
+
+      <dl class="controls">
+        <div>
+          <dt>Steer</dt>
+          <dd>← → or A D · tilt a phone</dd>
+        </div>
+        <div>
+          <dt>Boost</dt>
+          <dd>Space or ↑ · board UP button</dd>
+        </div>
+        <div>
+          <dt>Brake</dt>
+          <dd>↓ or S · board DOWN button</dd>
+        </div>
+        <div>
+          <dt>On the real panel</dt>
+          <dd>Copy <code>code.py</code> to CIRCUITPY</dd>
+        </div>
+      </dl>
+    </main>
+    <script type="module">
+      import { createGame } from "./game.js";
+      const canvas = document.getElementById("matrix");
+      const status = document.getElementById("status");
+      createGame(canvas, status);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,8 @@
+.DS_Store
+*.pyc
+__pycache__/
+.venv/
+node_modules/
+.impeccable/config.local.json
+.claude/
+*.log
