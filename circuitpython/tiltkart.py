@@ -25,7 +25,7 @@ except ImportError:
 WIDTH = 64
 HEIGHT = 32
 HORIZON = 9
-BIT_DEPTH = 1
+BIT_DEPTH = 3
 
 STEER_AXIS = 1  # 0=X  1=Y  2=Z
 STEER_FLIP = 1
@@ -161,7 +161,7 @@ def setup_display():
         clock_pin=board.MTX_CLK,
         latch_pin=board.MTX_LAT,
         output_enable_pin=board.MTX_OE,
-        doublebuffer=False,
+        doublebuffer=True,
     )
     display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
     bitmap = displayio.Bitmap(WIDTH, HEIGHT, 32)
