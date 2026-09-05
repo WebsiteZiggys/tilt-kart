@@ -25,7 +25,7 @@ except ImportError:
 WIDTH = 64
 HEIGHT = 32
 HORIZON = 9
-BIT_DEPTH = 3
+BIT_DEPTH = 2
 
 STEER_AXIS = 1  # 0=X  1=Y  2=Z
 STEER_FLIP = 1
@@ -216,12 +216,30 @@ def setup_buttons():
     return up, down
 
 
+def _make_i2c():
+    try:
+        import bitbangio
+
+        return bitbangio.I2C(board.SCL, board.SDA)
+    except Exception:
+        pass
+    try:
+        import busio
+
+        return busio.I2C(board.SCL, board.SDA, frequency=100000)
+    except Exception:
+        pass
+    try:
+        return board.I2C()
+    except Exception:
+        return None
+
+
 def setup_accel():
     if adafruit_lis3dh is None:
         return None
-    try:
-        i2c = board.I2C()
-    except Exception:
+    i2c = _make_i2c()
+    if i2c is None:
         return None
     for addr in (0x19, 0x18):
         try:
@@ -272,18 +290,14 @@ def read_steer(lis, rest):
 
 
 def rest_axis(lis):
+    global STEER_AXIS
     if lis is None:
         return 0.0
-    total = 0.0
-    count = 0
-    for _ in range(6):
-        try:
-            total += lis.acceleration[STEER_AXIS]
-            count += 1
-        except Exception:
-            pass
-        time.sleep(0.02)
-    return total / count if count else 0.0
+    xyz = rest_xyz(lis)
+    absr = (abs(xyz[0]), abs(xyz[1]), abs(xyz[2]))
+    # Gravity takes the largest axis. Steer on the flattest one.
+    STEER_AXIS = absr.index(min(absr))
+    return xyz[STEER_AXIS]
 
 
 def rest_xyz(lis):
