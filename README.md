@@ -8,7 +8,7 @@ The panel boots to a **PLAY** menu. Pick a game, play it, and you land back on t
 
 - **KART** — tilt-to-steer racer, crates, items, 7 laps
 - **STACK** — drop the moving bar, stack as high as you can
-- **SWING** — tilt-tennis: aim with tilt, swing with the button, first to 4
+- **SWING** — tilt-tennis: pick EASY / NORM / HARD, aim with tilt, swing with the button
 
 This is original work. It does not use Nintendo characters or art.
 
@@ -40,8 +40,8 @@ Open http://127.0.0.1:4173
 - Menu: `↑` `↓` to pick, Enter / space / click to play
 - Kart: `A` `D` or arrows steer, space uses an item, `S` brakes
 - Stack: space or `↑` drops the bar
-- Swing: `↑` `↓` aim, space / click swings, first to 4
-- After a game, Enter returns to the menu
+- Swing: `↓` picks a level, space / Enter plays; `↑` `↓` aim, space / click swings
+- After Swing, Enter goes back to the level list; BACK leaves to the arcade menu
 
 ## Add another game
 
@@ -92,7 +92,11 @@ A bar slides back and forth. Drop it onto the stack. Anything hanging off is cut
 
 ## Swing
 
-Tilt-tennis. You stand on the right. Tilt aims the racket, UP / space swings. Time the hit when the ball reaches you. First to 4 points wins.
+Tilt-tennis. You stand on the right. First pick **EASY** (default), **NORM**, or **HARD**. Tilt aims the racket, UP / space swings. Time the hit when the ball reaches you.
+
+- **EASY** — big racket, slow ball, CPU misses a lot, first to 3
+- **NORM** — in between, first to 4
+- **HARD** — small racket, fast ball, CPU almost always returns, first to 4
 
 ## Project layout
 
