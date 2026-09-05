@@ -221,11 +221,17 @@ def setup_accel():
         return None
     try:
         i2c = board.I2C()
-        lis = adafruit_lis3dh.LIS3DH_I2C(i2c, address=0x19)
-        lis.range = adafruit_lis3dh.RANGE_4_G
-        return lis
     except Exception:
         return None
+    for addr in (0x19, 0x18):
+        try:
+            lis = adafruit_lis3dh.LIS3DH_I2C(i2c, address=addr)
+            lis.range = adafruit_lis3dh.RANGE_4_G
+            _ = lis.acceleration
+            return lis
+        except Exception:
+            pass
+    return None
 
 
 def build_track():
