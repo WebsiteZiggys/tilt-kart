@@ -32,7 +32,7 @@ def load_game(module_name):
     return module.run
 
 
-def menu_loop(display, bitmap, lis, up, down):
+def menu_loop(display, bitmap, lis, up, down, rest):
     index = 0
     was_up = True
     was_down = True
@@ -51,7 +51,6 @@ def menu_loop(display, bitmap, lis, up, down):
         steer = 0.0
         if lis:
             try:
-                rest = getattr(menu_loop, "rest", 0.0)
                 steer = tk.read_steer(lis, rest)
             except Exception:
                 steer = 0.0
@@ -86,9 +85,9 @@ def main():
     display, bitmap = tk.setup_display()
     up, down = tk.setup_buttons()
     lis = tk.setup_accel()
-    menu_loop.rest = tk.rest_axis(lis)
+    rest = tk.rest_axis(lis)
     while True:
-        choice = menu_loop(display, bitmap, lis, up, down)
+        choice = menu_loop(display, bitmap, lis, up, down, rest)
         name, module_name = GAMES[choice]
         run = load_game(module_name)
         run(display, bitmap, lis, up, down)
