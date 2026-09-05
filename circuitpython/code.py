@@ -34,9 +34,9 @@ def load_game(module_name):
 
 def menu_loop(display, bitmap, lis, up, down, rest=0.0):
     index = 0
-    was_up = True
-    was_down = True
-    t = 0
+    was_up = tk.button_pressed(up)
+    was_down = tk.button_pressed(down)
+    tilt_wait = 0
     while True:
         down_now = tk.button_pressed(down)
         up_now = tk.button_pressed(up)
@@ -48,8 +48,24 @@ def menu_loop(display, bitmap, lis, up, down, rest=0.0):
         was_up = up_now
         was_down = down_now
 
+        if tilt_wait > 0:
+            tilt_wait -= 1
+        elif lis:
+            try:
+                steer = tk.read_steer(lis, rest)
+            except Exception:
+                steer = 0.0
+            if steer > 0.7:
+                index = (index + 1) % len(GAMES)
+                tilt_wait = 8
+            elif steer < -0.7:
+                index = (index - 1) % len(GAMES)
+                tilt_wait = 8
+
         tk.clear(bitmap, tk.C_SKY1)
         tk.draw_text(bitmap, "PLAY", 22, 2, tk.C_YELLOW)
+        tk.draw_text(bitmap, "U", 2, 2, tk.C_CYAN if up_now else tk.C_RED)
+        tk.draw_text(bitmap, "D", 8, 2, tk.C_CYAN if down_now else tk.C_RED)
         start = 0
         if index > 1:
             start = index - 1
@@ -61,11 +77,10 @@ def menu_loop(display, bitmap, lis, up, down, rest=0.0):
             if real == index:
                 tk.draw_text(bitmap, ">", 8, y, tk.C_MAGENTA)
             tk.draw_text(bitmap, name, 16, y, color)
-        if int(t * 2) & 1:
-            tk.draw_text(bitmap, "UP", 50, 26, tk.C_HUD)
+        tk.draw_text(bitmap, "MID", 2, 26, tk.C_HUD)
+        tk.draw_text(bitmap, "BOT", 42, 26, tk.C_HUD)
         display.refresh(minimum_frames_per_second=0)
-        t += 0.08
-        time.sleep(0.03)
+        time.sleep(0.01)
 
 
 def main():

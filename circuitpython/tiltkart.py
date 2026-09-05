@@ -203,48 +203,12 @@ def setup_display():
     return display, bitmap
 
 
-class _Btn:
-    def __init__(self):
-        self.pressed = False
-
-
-_KEYS = None
-_UP_BTN = None
-_DOWN_BTN = None
-
-
-def _pump_buttons():
-    if _KEYS is None:
-        return
-    event = _KEYS.events.get()
-    while event:
-        if event.key_number == 0:
-            _UP_BTN.pressed = event.pressed
-        else:
-            _DOWN_BTN.pressed = event.pressed
-        event = _KEYS.events.get()
-
-
 def setup_buttons():
-    global _KEYS, _UP_BTN, _DOWN_BTN
-    try:
-        import keypad
-
-        _UP_BTN = _Btn()
-        _DOWN_BTN = _Btn()
-        _KEYS = keypad.Keys(
-            (board.BUTTON_UP, board.BUTTON_DOWN),
-            value_when_pressed=False,
-            pull=True,
-        )
-        return _UP_BTN, _DOWN_BTN
-    except Exception:
-        _KEYS = None
-        up = digitalio.DigitalInOut(board.BUTTON_UP)
-        up.switch_to_input(pull=digitalio.Pull.UP)
-        down = digitalio.DigitalInOut(board.BUTTON_DOWN)
-        down.switch_to_input(pull=digitalio.Pull.UP)
-        return up, down
+    up = digitalio.DigitalInOut(board.BUTTON_UP)
+    up.switch_to_input(pull=digitalio.Pull.UP)
+    down = digitalio.DigitalInOut(board.BUTTON_DOWN)
+    down.switch_to_input(pull=digitalio.Pull.UP)
+    return up, down
 
 
 def setup_accel():
@@ -280,10 +244,9 @@ def curve_at(z):
 
 
 def button_pressed(pin):
-    _pump_buttons()
-    pressed = getattr(pin, "pressed", None)
-    if pressed is not None:
-        return pressed
+    if pin.value:
+        return False
+    time.sleep(0.006)
     return not pin.value
 
 
