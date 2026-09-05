@@ -244,9 +244,6 @@ def curve_at(z):
 
 
 def button_pressed(pin):
-    if pin.value:
-        return False
-    time.sleep(0.006)
     return not pin.value
 
 
