@@ -1,8 +1,9 @@
 # Tilt Kart — Matrix Portal M4 + 64x32 RGB matrix (Adafruit #4812)
 # Copy this file to CIRCUITPY as code.py
 #
-# Tilt the panel to steer. BUTTON_UP = start. BUTTON_DOWN = brake.
-# Boost only from rainbow pads that spawn on the road during the race.
+# Tilt the panel to steer. BUTTON_UP = start / use item. BUTTON_DOWN = brake.
+# Hit flashing crates for a random item, then press UP to use it.
+# Rainbow pads are still a ground boost if you drive through them.
 # If steering feels backwards, set STEER_FLIP = -1. If it barely responds,
 # try STEER_AXIS = 0 or 1.
 
@@ -39,8 +40,12 @@ BRAKE = 0.1
 DRAG = 0.016
 OFFROAD_DRAG = 0.09
 CENTRIFUGAL = 0.032
-PAD_SPAWN_MIN = 3.2
-PAD_SPAWN_MAX = 7.4
+PAD_SPAWN_MIN = 4.0
+PAD_SPAWN_MAX = 8.5
+CRATE_SPAWN_MIN = 3.4
+CRATE_SPAWN_MAX = 6.8
+ROULETTE_TIME = 1.05
+ITEM_NAMES = ("boost", "peel", "blue", "bomb")
 
 # (length along track, curve strength)
 TRACK = (
@@ -93,6 +98,7 @@ FONT = {
     "/": (0b001, 0b001, 0b010, 0b100, 0b100),
     "!": (0b010, 0b010, 0b010, 0b000, 0b010),
     "$": (0b010, 0b111, 0b110, 0b011, 0b111),
+    "?": (0b111, 0b001, 0b011, 0b000, 0b010),
 }
 
 # palette indices
@@ -317,15 +323,27 @@ def wrap_dist(a, b):
     return d
 
 
-def pad_at(world_z, pickups):
+def pickup_at(world_z, pickups, kind, half_z):
     if not pickups:
         return None
     for item in pickups:
-        if item.kind != "pad" or not item.alive:
+        if item.kind != kind or not item.alive:
             continue
-        if wrap_dist(world_z, item.z) < PAD_HALF_Z:
+        if wrap_dist(world_z, item.z) < half_z:
             return item
     return None
+
+
+def pad_at(world_z, pickups):
+    return pickup_at(world_z, pickups, "pad", PAD_HALF_Z)
+
+
+def crate_at(world_z, pickups):
+    return pickup_at(world_z, pickups, "crate", 3.2)
+
+
+def crate_color(world_z, x):
+    return (C_WHITE, C_YELLOW, C_CYAN, C_MAGENTA)[int(world_z * 2 + x) % 4]
 
 
 def rainbow_color(world_z, x, center):
@@ -349,6 +367,7 @@ def draw_road(bitmap, player_z, player_x, dt_stripe, pickups=None):
         right = center + half
         rumble_w = 1.2 + near * 2.4
         pad = pad_at(world_z, pickups)
+        crate = crate_at(world_z, pickups)
         for x in range(WIDTH):
             if x < left - rumble_w or x > right + rumble_w:
                 bitmap[x, y] = grass
@@ -357,6 +376,7 @@ def draw_road(bitmap, player_z, player_x, dt_stripe, pickups=None):
             else:
                 lane = (x - center) / half if half else 0
                 on_pad = pad and abs(lane - pad.x) < PAD_HALF_X
+                on_crate = crate and abs(lane - crate.x) < 0.28
                 edge = (x < left + 1.1) or (x > right - 1.1)
                 mid = abs(x - center) < (0.7 + near * 0.4)
                 dash = stripe and mid and near > 0.18
@@ -365,6 +385,8 @@ def draw_road(bitmap, player_z, player_x, dt_stripe, pickups=None):
                 elif on_pad:
                     rim = abs(abs(lane - pad.x) - PAD_HALF_X) < 0.07
                     bitmap[x, y] = C_WHITE if rim else rainbow_color(world_z, x, center)
+                elif on_crate:
+                    bitmap[x, y] = C_BLACK if ((int(x) + int(world_z)) & 1) else crate_color(world_z, x)
                 elif dash:
                     bitmap[x, y] = C_DASH
                 elif edge:
@@ -445,10 +467,35 @@ def player_kart(bitmap, boost, spin):
     draw_kart(bitmap, sx, sy, 3, body, C_WHITE, spin)
 
 
-def draw_hud(bitmap, lap, place, boost_left, coins):
+def item_icon_color(name, frame):
+    if name == "boost":
+        return C_CYAN
+    if name == "peel":
+        return C_BANANA
+    if name == "blue":
+        return C_RB4
+    if name == "bomb":
+        return C_ORANGE
+    return (C_WHITE, C_YELLOW, C_CYAN, C_MAGENTA, C_RB4, C_BANANA)[frame % 6]
+
+
+def draw_item_icon(bitmap, name, frame):
+    color = item_icon_color(name, frame)
+    for dy in range(5):
+        for dx in range(5):
+            edge = dx == 0 or dy == 0 or dx == 4 or dy == 4
+            plot(bitmap, 58 + dx, 1 + dy, C_WHITE if edge else color)
+
+
+def draw_hud(bitmap, lap, place, boost_left, coins, held, roulette, frame):
     draw_text(bitmap, "L%d/%d" % (min(lap, LAPS), LAPS), 1, 1, C_HUD)
     draw_text(bitmap, "P%d" % place, 28, 1, C_CYAN)
-    draw_text(bitmap, "$%d" % coins, 44, 1, C_COIN)
+    if roulette > 0:
+        draw_item_icon(bitmap, None, frame)
+    elif held:
+        draw_item_icon(bitmap, held, frame)
+    else:
+        draw_text(bitmap, "$%d" % coins, 44, 1, C_COIN)
     if boost_left > 0:
         for x in range(int(boost_left * 10)):
             plot(bitmap, 1 + x, 7, C_MAGENTA)
@@ -471,6 +518,19 @@ class Racer:
         self.boost = 0.0
         self.finished = False
         self.place = 1
+        self.held = None
+        self.roulette = 0.0
+        self.pending = None
+        self.flash = 0.0
+
+
+class Shot:
+    def __init__(self, kind, z, x, target):
+        self.kind = kind
+        self.z = z
+        self.x = x
+        self.target = target
+        self.alive = True
 
 
 class Pickup:
@@ -495,40 +555,121 @@ def make_pickups():
     return items
 
 
-def live_pad(pickups):
+def live_kind(pickups, kind):
     for item in pickups:
-        if item.kind == "pad" and item.alive:
+        if item.kind == kind and item.alive:
             return item
     return None
 
 
-def expire_pads(pickups, player):
+def expire_kind(pickups, player, kind):
     for item in pickups:
-        if item.kind != "pad" or not item.alive:
+        if item.kind != kind or not item.alive:
             continue
         ahead = (item.z - player.z + TRACK_LEN) % TRACK_LEN
         if ahead > 88:
             item.alive = False
 
 
-def maybe_spawn_pad(pickups, player, now, next_at):
-    expire_pads(pickups, player)
-    if live_pad(pickups):
+def spawn_ahead(pickups, player, kind, now, next_at, lo, hi):
+    expire_kind(pickups, player, kind)
+    if live_kind(pickups, kind) or now < next_at:
         return next_at
-    if now < next_at:
-        return next_at
-    ahead = 20 + random.random() * 34
+    ahead = 18 + random.random() * 36
     lane = random.choice((-0.58, -0.28, 0.0, 0.28, 0.58))
-    pickups.append(Pickup("pad", (player.z + ahead) % TRACK_LEN, lane))
-    return now + PAD_SPAWN_MIN + random.random() * (PAD_SPAWN_MAX - PAD_SPAWN_MIN)
+    pickups.append(Pickup(kind, (player.z + ahead) % TRACK_LEN, lane))
+    return now + lo + random.random() * (hi - lo)
+
+
+def roll_item():
+    pick = random.random()
+    if pick < 0.34:
+        return "boost"
+    if pick < 0.62:
+        return "peel"
+    if pick < 0.82:
+        return "bomb"
+    return "blue"
+
+
+def race_key(racer):
+    return racer.lap * TRACK_LEN + racer.z
+
+
+def explode(racer):
+    racer.spin = 2.0
+    racer.speed *= 0.12
+    racer.boost = 0.0
+    racer.flash = 1.1
+
+
+def blue_target(player, cpus):
+    pack = sorted([player] + cpus, key=race_key, reverse=True)
+    if pack[0] is not player:
+        return pack[0]
+    if len(pack) > 1:
+        return pack[1]
+    return None
+
+
+def bomb_target(player, cpus):
+    best = None
+    best_d = 9999
+    here = race_key(player)
+    for other in cpus:
+        d = abs(race_key(other) - here)
+        if d < best_d:
+            best = other
+            best_d = d
+    return best
+
+
+def tick_roulette(player, dt):
+    if player.roulette <= 0:
+        return
+    player.roulette -= dt
+    if player.roulette <= 0:
+        player.held = player.pending
+        player.pending = None
+        player.roulette = 0.0
+
+
+def use_item(player, cpus, pickups, shots):
+    if player.roulette > 0 or not player.held:
+        return
+    item = player.held
+    player.held = None
+    if item == "boost":
+        player.boost = 1.2
+        player.speed = min(BOOST_SPEED, player.speed + 0.75)
+    elif item == "peel":
+        pickups.append(Pickup("banana", (player.z - 6 + TRACK_LEN) % TRACK_LEN, player.x))
+    elif item == "blue":
+        target = blue_target(player, cpus)
+        if target:
+            shots.append(Shot("blue", player.z, player.x, target))
+    elif item == "bomb":
+        target = bomb_target(player, cpus)
+        if target:
+            shots.append(Shot("bomb", player.z, target.x, target))
+
+
+def advance_shots(shots):
+    for shot in shots:
+        if not shot.alive or shot.target is None:
+            shot.alive = False
+            continue
+        target = shot.target
+        shot.x += (target.x - shot.x) * 0.28
+        shot.z = (shot.z + 6.2) % TRACK_LEN
+        if wrap_dist(shot.z, target.z) < 6.5:
+            explode(target)
+            shot.alive = False
 
 
 def race_place(player, cpus):
-    def key(racer):
-        return racer.lap * TRACK_LEN + racer.z
-
     pack = [player] + cpus
-    ranked = sorted(pack, key=key, reverse=True)
+    ranked = sorted(pack, key=race_key, reverse=True)
     for i, racer in enumerate(ranked):
         racer.place = i + 1
     return player.place
@@ -538,6 +679,8 @@ def advance_racer(racer, steer, braking, track_curve):
     if racer.finished:
         racer.speed *= 0.96
         return
+    if racer.flash > 0:
+        racer.flash -= 0.05
     if racer.spin > 0:
         racer.spin -= 0.05
         steer += math.sin(racer.spin * 14.0) * 0.7
@@ -572,28 +715,45 @@ def advance_racer(racer, steer, braking, track_curve):
                 racer.lap = LAPS
 
 
-def hit_pickups(player, pickups, coins):
+def hit_one(racer, item, coins, is_player):
+    if item.kind == "banana":
+        racer.spin = 1.65
+        racer.speed *= 0.32
+        racer.boost = 0.0
+        return coins, True
+    if not is_player:
+        return coins, False
+    if item.kind == "coin":
+        return coins + 1, True
+    if item.kind == "pad":
+        racer.boost = 1.15
+        racer.speed = min(BOOST_SPEED, racer.speed + 0.7)
+        return coins, True
+    if item.kind == "crate":
+        if racer.held or racer.roulette > 0:
+            return coins, False
+        racer.roulette = ROULETTE_TIME
+        racer.pending = roll_item()
+        racer.held = None
+        return coins, True
+    return coins, False
+
+
+def hit_pickups(player, cpus, pickups, coins):
+    pack = [(player, True)] + [(cpu, False) for cpu in cpus]
     for item in pickups:
         if not item.alive:
             continue
-        dz = abs((item.z - player.z + TRACK_LEN) % TRACK_LEN)
-        if dz > TRACK_LEN / 2:
-            dz = TRACK_LEN - dz
-        reach_z = PAD_HALF_Z if item.kind == "pad" else 2.4
-        reach_x = PAD_HALF_X if item.kind == "pad" else 0.22
-        if dz > reach_z:
-            continue
-        if abs(item.x - player.x) > reach_x:
-            continue
-        item.alive = False
-        if item.kind == "banana":
-            player.spin = 1.65
-            player.speed *= 0.32
-        elif item.kind == "coin":
-            coins += 1
-        elif item.kind == "pad":
-            player.boost = 1.15
-            player.speed = min(BOOST_SPEED, player.speed + 0.7)
+        for racer, is_player in pack:
+            dz = wrap_dist(item.z, racer.z)
+            reach_z = PAD_HALF_Z if item.kind == "pad" else (3.0 if item.kind == "crate" else 2.4)
+            reach_x = PAD_HALF_X if item.kind == "pad" else (0.3 if item.kind == "crate" else 0.22)
+            if dz > reach_z or abs(item.x - racer.x) > reach_x:
+                continue
+            coins, used = hit_one(racer, item, coins, is_player)
+            if used:
+                item.alive = False
+                break
     return coins
 
 
@@ -609,7 +769,7 @@ def cpu_think(cpu, player):
 def title_loop(display, bitmap, lis, up, rest):
     t = 0.0
     demo_z = 0.0
-    demo_pads = (Pickup("pad", 28.0, 0.0), Pickup("pad", 70.0, -0.2))
+    demo_pads = (Pickup("crate", 28.0, 0.0), Pickup("pad", 70.0, -0.2))
     while True:
         draw_sky(bitmap, t)
         draw_road(bitmap, demo_z, math.sin(t * 0.7) * 0.25, demo_z, demo_pads)
@@ -658,21 +818,35 @@ def race_loop(display, bitmap, lis, up, down, rest):
         Racer(22.0, -0.4, 1.18, C_MAGENTA),
     ]
     pickups = make_pickups()
+    shots = []
     coins = 0
-    next_pad_at = time.monotonic() + 2.4 + random.random() * 2.0
+    next_pad_at = time.monotonic() + 3.0 + random.random() * 2.0
+    next_crate_at = time.monotonic() + 1.6 + random.random() * 1.4
+    was_up = True
     countdown(display, bitmap, player.z)
 
     while True:
         now = time.monotonic()
         steer = read_steer(lis, rest)
         braking = button_pressed(down)
-        next_pad_at = maybe_spawn_pad(pickups, player, now, next_pad_at)
+        up_now = button_pressed(up)
+        if up_now and not was_up:
+            use_item(player, cpus, pickups, shots)
+        was_up = up_now
+        next_pad_at = spawn_ahead(
+            pickups, player, "pad", now, next_pad_at, PAD_SPAWN_MIN, PAD_SPAWN_MAX
+        )
+        next_crate_at = spawn_ahead(
+            pickups, player, "crate", now, next_crate_at, CRATE_SPAWN_MIN, CRATE_SPAWN_MAX
+        )
+        tick_roulette(player, 0.03)
+        advance_shots(shots)
 
         curve = curve_at(player.z)
         advance_racer(player, steer, braking, curve)
         for cpu in cpus:
             advance_racer(cpu, cpu_think(cpu, player), False, curve_at(cpu.z))
-        coins = hit_pickups(player, pickups, coins)
+        coins = hit_pickups(player, cpus, pickups, coins)
         place = race_place(player, cpus)
 
         draw_sky(bitmap, player.z * 0.04)
@@ -688,8 +862,16 @@ def race_loop(display, bitmap, lis, up, down, rest):
                 draw_banana(bitmap, sx, sy, scale)
             elif item.kind == "coin":
                 draw_coin(bitmap, sx, sy, int(now * 8) & 1)
-            elif scale == 1:
+            elif item.kind == "pad" and scale == 1:
                 draw_pad(bitmap, sx, sy, scale, item.z)
+        for shot in shots:
+            if not shot.alive:
+                continue
+            proj = project_sprite(player.z, player.x, shot.z, shot.x)
+            if proj:
+                color = C_RB4 if shot.kind == "blue" else C_ORANGE
+                plot(bitmap, proj[0], proj[1], color)
+                plot(bitmap, proj[0], proj[1] - 1, C_WHITE)
         for cpu in cpus:
             cz = cpu.z
             if cpu.lap > player.lap:
@@ -699,9 +881,9 @@ def race_loop(display, bitmap, lis, up, down, rest):
             proj = project_sprite(player.z, player.x, cz, cpu.x)
             if proj:
                 sx, sy, scale, _near = proj
-                draw_kart(bitmap, sx, sy, scale, cpu.body, C_WHITE, cpu.spin > 0)
-        player_kart(bitmap, player.boost > 0, player.spin > 0.15)
-        draw_hud(bitmap, player.lap, place, player.boost, coins)
+                draw_kart(bitmap, sx, sy, scale, cpu.body, C_WHITE, cpu.spin > 0 or cpu.flash > 0)
+        player_kart(bitmap, player.boost > 0, player.spin > 0.15 or player.flash > 0)
+        draw_hud(bitmap, player.lap, place, player.boost, coins, player.held, player.roulette, int(now * 12))
         display.refresh(minimum_frames_per_second=0)
 
         if player.finished:

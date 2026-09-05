@@ -9,8 +9,11 @@ const BRAKE = 0.1;
 const DRAG = 0.016;
 const OFFROAD_DRAG = 0.09;
 const CENTRIFUGAL = 0.032;
-const PAD_SPAWN_MIN = 3.2;
-const PAD_SPAWN_MAX = 7.4;
+const PAD_SPAWN_MIN = 4.0;
+const PAD_SPAWN_MAX = 8.5;
+const CRATE_SPAWN_MIN = 3.4;
+const CRATE_SPAWN_MAX = 6.8;
+const ROULETTE_TIME = 1.05;
 
 const TRACK = [
   [70, 0.0],
@@ -97,6 +100,7 @@ const FONT = {
   "/": [0b001, 0b001, 0b010, 0b100, 0b100],
   "!": [0b010, 0b010, 0b010, 0b000, 0b010],
   $: [0b010, 0b111, 0b110, 0b011, 0b111],
+  "?": [0b111, 0b001, 0b011, 0b000, 0b010],
 };
 
 function buildTrack() {
@@ -181,13 +185,25 @@ function wrapDist(a, b) {
   return d;
 }
 
-function padAt(worldZ, pickups) {
+function pickupAt(worldZ, pickups, kind, halfZ) {
   if (!pickups) return null;
   for (const item of pickups) {
-    if (item.kind !== "pad" || !item.alive) continue;
-    if (wrapDist(worldZ, item.z) < PAD_HALF_Z) return item;
+    if (item.kind !== kind || !item.alive) continue;
+    if (wrapDist(worldZ, item.z) < halfZ) return item;
   }
   return null;
+}
+
+function padAt(worldZ, pickups) {
+  return pickupAt(worldZ, pickups, "pad", PAD_HALF_Z);
+}
+
+function crateAt(worldZ, pickups) {
+  return pickupAt(worldZ, pickups, "crate", 3.2);
+}
+
+function crateColor(worldZ, x) {
+  return [PALETTE.WHITE, PALETTE.YELLOW, PALETTE.CYAN, PALETTE.MAGENTA][Math.abs(Math.floor(worldZ * 2 + x)) % 4];
 }
 
 function rainbowColor(worldZ, x, center) {
@@ -211,6 +227,7 @@ function drawRoad(buf, playerZ, playerX, pickups = null) {
     const right = center + half;
     const rumbleW = 1.2 + near * 2.4;
     const pad = padAt(worldZ, pickups);
+    const crate = crateAt(worldZ, pickups);
     const row = y * WIDTH;
     for (let x = 0; x < WIDTH; x++) {
       if (x < left - rumbleW || x > right + rumbleW) {
@@ -220,6 +237,7 @@ function drawRoad(buf, playerZ, playerX, pickups = null) {
       } else {
         const lane = half ? (x - center) / half : 0;
         const onPad = pad && Math.abs(lane - pad.x) < PAD_HALF_X;
+        const onCrate = crate && Math.abs(lane - crate.x) < 0.28;
         const edge = x < left + 1.1 || x > right - 1.1;
         const mid = Math.abs(x - center) < 0.7 + near * 0.4;
         const dash = stripe && mid && near > 0.18;
@@ -228,6 +246,8 @@ function drawRoad(buf, playerZ, playerX, pickups = null) {
         } else if (onPad) {
           const rim = Math.abs(Math.abs(lane - pad.x) - PAD_HALF_X) < 0.07;
           buf.pixels[row + x] = rim ? PALETTE.WHITE : rainbowColor(worldZ, x, center);
+        } else if (onCrate) {
+          buf.pixels[row + x] = (Math.floor(x) + Math.floor(worldZ)) & 1 ? PALETTE.BLACK : crateColor(worldZ, x);
         } else if (dash) {
           buf.pixels[row + x] = PALETTE.DASH;
         } else if (edge) {
@@ -318,6 +338,20 @@ class Racer {
     this.boost = 0;
     this.finished = false;
     this.place = 1;
+    this.held = null;
+    this.roulette = 0;
+    this.pending = null;
+    this.flash = 0;
+  }
+}
+
+class Shot {
+  constructor(kind, z, x, target) {
+    this.kind = kind;
+    this.z = z;
+    this.x = x;
+    this.target = target;
+    this.alive = true;
   }
 }
 
@@ -344,31 +378,129 @@ function makePickups() {
   return items;
 }
 
-function livePad(pickups) {
-  return pickups.find((item) => item.kind === "pad" && item.alive) || null;
+function liveKind(pickups, kind) {
+  return pickups.find((item) => item.kind === kind && item.alive) || null;
 }
 
-function expirePads(pickups, player) {
+function expireKind(pickups, player, kind) {
   for (const item of pickups) {
-    if (item.kind !== "pad" || !item.alive) continue;
+    if (item.kind !== kind || !item.alive) continue;
     const ahead = (item.z - player.z + TRACK_LEN) % TRACK_LEN;
     if (ahead > 88) item.alive = false;
   }
 }
 
-function maybeSpawnPad(pickups, player, now, nextAt) {
-  expirePads(pickups, player);
-  if (livePad(pickups) || now < nextAt) return nextAt;
-  const ahead = 20 + Math.random() * 34;
+function spawnAhead(pickups, player, kind, now, nextAt, lo, hi) {
+  expireKind(pickups, player, kind);
+  if (liveKind(pickups, kind) || now < nextAt) return nextAt;
+  const ahead = 18 + Math.random() * 36;
   const lanes = [-0.58, -0.28, 0, 0.28, 0.58];
-  pickups.push(new Pickup("pad", (player.z + ahead) % TRACK_LEN, lanes[Math.floor(Math.random() * lanes.length)]));
-  return now + PAD_SPAWN_MIN + Math.random() * (PAD_SPAWN_MAX - PAD_SPAWN_MIN);
+  pickups.push(new Pickup(kind, (player.z + ahead) % TRACK_LEN, lanes[Math.floor(Math.random() * lanes.length)]));
+  return now + lo + Math.random() * (hi - lo);
+}
+
+function rollItem() {
+  const pick = Math.random();
+  if (pick < 0.34) return "boost";
+  if (pick < 0.62) return "peel";
+  if (pick < 0.82) return "bomb";
+  return "blue";
+}
+
+function raceKey(racer) {
+  return racer.lap * TRACK_LEN + racer.z;
+}
+
+function explode(racer) {
+  racer.spin = 2;
+  racer.speed *= 0.12;
+  racer.boost = 0;
+  racer.flash = 1.1;
+}
+
+function blueTarget(player, cpus) {
+  const pack = [player, ...cpus].sort((a, b) => raceKey(b) - raceKey(a));
+  if (pack[0] !== player) return pack[0];
+  return pack[1] || null;
+}
+
+function bombTarget(player, cpus) {
+  let best = null;
+  let bestD = 9999;
+  const here = raceKey(player);
+  for (const other of cpus) {
+    const d = Math.abs(raceKey(other) - here);
+    if (d < bestD) {
+      best = other;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+function tickRoulette(player, dt) {
+  if (player.roulette <= 0) return;
+  player.roulette -= dt;
+  if (player.roulette <= 0) {
+    player.held = player.pending;
+    player.pending = null;
+    player.roulette = 0;
+  }
+}
+
+function useItem(player, cpus, pickups, shots) {
+  if (player.roulette > 0 || !player.held) return;
+  const item = player.held;
+  player.held = null;
+  if (item === "boost") {
+    player.boost = 1.2;
+    player.speed = Math.min(BOOST_SPEED, player.speed + 0.75);
+  } else if (item === "peel") {
+    pickups.push(new Pickup("banana", (player.z - 6 + TRACK_LEN) % TRACK_LEN, player.x));
+  } else if (item === "blue") {
+    const target = blueTarget(player, cpus);
+    if (target) shots.push(new Shot("blue", player.z, player.x, target));
+  } else if (item === "bomb") {
+    const target = bombTarget(player, cpus);
+    if (target) shots.push(new Shot("bomb", player.z, target.x, target));
+  }
+}
+
+function advanceShots(shots) {
+  for (const shot of shots) {
+    if (!shot.alive || !shot.target) {
+      shot.alive = false;
+      continue;
+    }
+    shot.x += (shot.target.x - shot.x) * 0.28;
+    shot.z = (shot.z + 6.2) % TRACK_LEN;
+    if (wrapDist(shot.z, shot.target.z) < 6.5) {
+      explode(shot.target);
+      shot.alive = false;
+    }
+  }
+}
+
+function itemIconColor(name, frame) {
+  if (name === "boost") return PALETTE.CYAN;
+  if (name === "peel") return PALETTE.BANANA;
+  if (name === "blue") return PALETTE.RB4;
+  if (name === "bomb") return PALETTE.ORANGE;
+  return [PALETTE.WHITE, PALETTE.YELLOW, PALETTE.CYAN, PALETTE.MAGENTA, PALETTE.RB4, PALETTE.BANANA][frame % 6];
+}
+
+function drawItemIcon(buf, name, frame) {
+  const color = itemIconColor(name, frame);
+  for (let dy = 0; dy < 5; dy++) {
+    for (let dx = 0; dx < 5; dx++) {
+      const edge = dx === 0 || dy === 0 || dx === 4 || dy === 4;
+      buf.plot(58 + dx, 1 + dy, edge ? PALETTE.WHITE : color);
+    }
+  }
 }
 
 function racePlace(player, cpus) {
-  const pack = [player, ...cpus].sort(
-    (a, b) => b.lap * TRACK_LEN + b.z - (a.lap * TRACK_LEN + a.z)
-  );
+  const pack = [player, ...cpus].sort((a, b) => raceKey(b) - raceKey(a));
   pack.forEach((racer, i) => {
     racer.place = i + 1;
   });
@@ -380,6 +512,7 @@ function advanceRacer(racer, steer, braking, trackCurve) {
     racer.speed *= 0.96;
     return;
   }
+  if (racer.flash > 0) racer.flash -= 0.05;
   if (racer.spin > 0) {
     racer.spin -= 0.05;
     steer += Math.sin(racer.spin * 14) * 0.7;
@@ -417,23 +550,45 @@ function advanceRacer(racer, steer, braking, trackCurve) {
   }
 }
 
-function hitPickups(player, pickups, coins) {
+function hitOne(racer, item, coins, isPlayer) {
+  if (item.kind === "banana") {
+    racer.spin = 1.65;
+    racer.speed *= 0.32;
+    racer.boost = 0;
+    return [coins, true];
+  }
+  if (!isPlayer) return [coins, false];
+  if (item.kind === "coin") return [coins + 1, true];
+  if (item.kind === "pad") {
+    racer.boost = 1.15;
+    racer.speed = Math.min(BOOST_SPEED, racer.speed + 0.7);
+    return [coins, true];
+  }
+  if (item.kind === "crate") {
+    if (racer.held || racer.roulette > 0) return [coins, false];
+    racer.roulette = ROULETTE_TIME;
+    racer.pending = rollItem();
+    racer.held = null;
+    return [coins, true];
+  }
+  return [coins, false];
+}
+
+function hitPickups(player, cpus, pickups, coins) {
+  const pack = [[player, true], ...cpus.map((cpu) => [cpu, false])];
   for (const item of pickups) {
     if (!item.alive) continue;
-    let dz = Math.abs((item.z - player.z + TRACK_LEN) % TRACK_LEN);
-    if (dz > TRACK_LEN / 2) dz = TRACK_LEN - dz;
-    const reachZ = item.kind === "pad" ? PAD_HALF_Z : 2.4;
-    const reachX = item.kind === "pad" ? PAD_HALF_X : 0.22;
-    if (dz > reachZ || Math.abs(item.x - player.x) > reachX) continue;
-    item.alive = false;
-    if (item.kind === "banana") {
-      player.spin = 1.65;
-      player.speed *= 0.32;
-    } else if (item.kind === "coin") {
-      coins += 1;
-    } else if (item.kind === "pad") {
-      player.boost = 1.15;
-      player.speed = Math.min(BOOST_SPEED, player.speed + 0.7);
+    for (const [racer, isPlayer] of pack) {
+      const dz = wrapDist(item.z, racer.z);
+      const reachZ = item.kind === "pad" ? PAD_HALF_Z : item.kind === "crate" ? 3 : 2.4;
+      const reachX = item.kind === "pad" ? PAD_HALF_X : item.kind === "crate" ? 0.3 : 0.22;
+      if (dz > reachZ || Math.abs(item.x - racer.x) > reachX) continue;
+      const [nextCoins, used] = hitOne(racer, item, coins, isPlayer);
+      coins = nextCoins;
+      if (used) {
+        item.alive = false;
+        break;
+      }
     }
   }
   return coins;
@@ -457,14 +612,17 @@ export function createGame(canvas, statusEl) {
   let player;
   let cpus;
   let pickups;
+  let shots;
   let coins = 0;
   let demoZ = 0;
   let time = 0;
   let countdownAt = 0;
   let countdownWord = "3";
   let nextPadAt = 0;
+  let nextCrateAt = 0;
   let lastNow = performance.now();
   let physAcc = 0;
+  let useArmed = true;
   const STEP = 0.03;
 
   function resetRace() {
@@ -475,8 +633,11 @@ export function createGame(canvas, statusEl) {
       new Racer(22, -0.4, 1.18, PALETTE.MAGENTA),
     ];
     pickups = makePickups();
+    shots = [];
     coins = 0;
-    nextPadAt = performance.now() / 1000 + 2.4 + Math.random() * 2;
+    nextPadAt = performance.now() / 1000 + 3 + Math.random() * 2;
+    nextCrateAt = performance.now() / 1000 + 1.6 + Math.random() * 1.4;
+    useArmed = true;
     mode = "countdown";
     countdownAt = performance.now();
     countdownWord = "3";
@@ -493,15 +654,19 @@ export function createGame(canvas, statusEl) {
     return keys.has("arrowdown") || keys.has("s");
   }
 
+  function useHeldDown() {
+    return keys.has(" ") || keys.has("arrowup") || keys.has("w") || keys.has("e");
+  }
+
   function renderTitle() {
-    const demoPads = [new Pickup("pad", 28, 0), new Pickup("pad", 70, -0.2)];
+    const demoPads = [new Pickup("crate", 28, 0), new Pickup("pad", 70, -0.2)];
     drawSky(buf, time);
     drawRoad(buf, demoZ, Math.sin(time * 0.7) * 0.25, demoPads);
     drawPlayerKart(buf, false, false);
     buf.text("TILT", 23, 2, PALETTE.YELLOW);
     buf.text("KART", 23, 9, PALETTE.MAGENTA);
     if (Math.floor(time * 2) & 1) buf.text("GO", 28, 16, PALETTE.HUD);
-    statusEl.textContent = "Enter or click to race · arrows / A D steer · hit rainbow pads";
+    statusEl.textContent = "Enter or click to race · hit crates · space uses the item";
   }
 
   function renderCountdown() {
@@ -516,11 +681,18 @@ export function createGame(canvas, statusEl) {
   }
 
   function stepRace() {
+    const now = performance.now() / 1000;
     const steer = inputSteer();
-    nextPadAt = maybeSpawnPad(pickups, player, performance.now() / 1000, nextPadAt);
+    const using = useHeldDown();
+    if (using && useArmed) useItem(player, cpus, pickups, shots);
+    useArmed = !using;
+    nextPadAt = spawnAhead(pickups, player, "pad", now, nextPadAt, PAD_SPAWN_MIN, PAD_SPAWN_MAX);
+    nextCrateAt = spawnAhead(pickups, player, "crate", now, nextCrateAt, CRATE_SPAWN_MIN, CRATE_SPAWN_MAX);
+    tickRoulette(player, STEP);
+    advanceShots(shots);
     advanceRacer(player, steer, braking(), curveAt(player.z));
     for (const cpu of cpus) advanceRacer(cpu, cpuThink(cpu, player), false, curveAt(cpu.z));
-    coins = hitPickups(player, pickups, coins);
+    coins = hitPickups(player, cpus, pickups, coins);
     racePlace(player, cpus);
     if (player.finished) mode = "finish";
   }
@@ -535,23 +707,35 @@ export function createGame(canvas, statusEl) {
       if (!proj) continue;
       if (item.kind === "banana") drawBanana(buf, proj.sx, proj.sy, proj.scale);
       else if (item.kind === "coin") drawCoin(buf, proj.sx, proj.sy, Math.floor(time * 8) & 1);
-      else if (proj.scale === 1) drawPad(buf, proj.sx, proj.sy, proj.scale, item.z);
+      else if (item.kind === "pad" && proj.scale === 1) drawPad(buf, proj.sx, proj.sy, proj.scale, item.z);
+    }
+    for (const shot of shots) {
+      if (!shot.alive) continue;
+      const proj = projectSprite(player.z, player.x, shot.z, shot.x);
+      if (proj) {
+        buf.plot(proj.sx, proj.sy, shot.kind === "blue" ? PALETTE.RB4 : PALETTE.ORANGE);
+        buf.plot(proj.sx, proj.sy - 1, PALETTE.WHITE);
+      }
     }
     for (const cpu of cpus) {
       let cz = cpu.z;
       if (cpu.lap > player.lap) cz += TRACK_LEN;
       else if (cpu.lap < player.lap) cz -= TRACK_LEN;
       const proj = projectSprite(player.z, player.x, cz, cpu.x);
-      if (proj) drawKart(buf, proj.sx, proj.sy, proj.scale, cpu.body, cpu.spin > 0);
+      if (proj) drawKart(buf, proj.sx, proj.sy, proj.scale, cpu.body, cpu.spin > 0 || cpu.flash > 0);
     }
-    drawPlayerKart(buf, player.boost > 0, player.spin > 0.15);
+    drawPlayerKart(buf, player.boost > 0, player.spin > 0.15 || player.flash > 0);
     buf.text(`L${Math.min(player.lap, LAPS)}/${LAPS}`, 1, 1, PALETTE.HUD);
     buf.text(`P${player.place}`, 28, 1, PALETTE.CYAN);
-    buf.text(`$${coins}`, 44, 1, PALETTE.COIN);
+    const frame = Math.floor(time * 12);
+    if (player.roulette > 0) drawItemIcon(buf, null, frame);
+    else if (player.held) drawItemIcon(buf, player.held, frame);
+    else buf.text(`$${coins}`, 44, 1, PALETTE.COIN);
     if (player.boost > 0) {
       for (let x = 0; x < Math.floor(player.boost * 10); x++) buf.plot(1 + x, 7, PALETTE.MAGENTA);
     }
-    statusEl.textContent = `Lap ${player.lap}/${LAPS} · P${player.place} · ${coins} coins`;
+    const itemName = player.roulette > 0 ? "cycling..." : player.held || "no item";
+    statusEl.textContent = `Lap ${player.lap}/${LAPS} · P${player.place} · ${itemName} · space to use`;
   }
 
   function renderFinish() {
@@ -618,6 +802,7 @@ export function createGame(canvas, statusEl) {
 
   function startOrRestart() {
     if (mode === "title" || mode === "finish") resetRace();
+    else if (mode === "race") useItem(player, cpus, pickups, shots);
   }
 
   window.addEventListener("keydown", (event) => {

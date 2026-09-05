@@ -4,7 +4,7 @@ A tilt-to-steer kart racer for the [Adafruit Matrix Portal Starter Kit](https://
 
 This is an original game. It plays like a tiny arcade racer, not Mario Kart, and it does not use Nintendo characters or art.
 
-**On the real panel:** tilt left/right to steer, `BUTTON_UP` to start, `BUTTON_DOWN` to brake. Boost only comes from rainbow pads that spawn on the road.
+**On the real panel:** tilt left/right to steer, `BUTTON_UP` to start or use an item, `BUTTON_DOWN` to brake.
 
 **In the browser:** same race, keyboard controls, so you can try it before copying files to the board.
 
@@ -46,15 +46,22 @@ python3 -m http.server 4173
 
 Open http://127.0.0.1:4173
 
-- `Enter` or click: start / race again
+- `Enter` or click: start / race again, or use a held item during a race
 - `←` `→` or `A` `D`: steer
 - `↓` or `S`: brake
-- Rainbow pads spawn on the road at random — drive through them to boost
+- `Space`: use the item after a crate finishes cycling
 - On a phone, tilt works after the browser allows device orientation
 
 ## How it plays
 
-Seven laps on a longer, twistier night course. Stay on the asphalt — grass is punishing. Yellow coins score. Yellow bananas spin you out hard. Rainbow strips spawn ahead of you at random; they are the only boost. Three CPU karts start in front and race clean.
+Seven laps on a longer, twistier night course. Stay on the asphalt — grass is punishing. Yellow coins score. Yellow bananas spin you out hard. Flashing crates spawn ahead of you: hit one and the HUD cycles, then you keep that item until you fire it.
+
+- **Boost** (cyan): speed burst
+- **Peel** (yellow): drop a banana behind you
+- **Bomb** (orange): blows up the nearest rival
+- **Blue** (blue): hunts the racer in first and blows them up
+
+Rainbow road pads still spawn sometimes as a guaranteed ground boost. Three CPU karts start in front.
 
 The Portal’s LIS3DH accelerometer (I2C address `0x19`) is the steering wheel. That is the same sensor Adafruit uses for the digital-sand demos.
 
