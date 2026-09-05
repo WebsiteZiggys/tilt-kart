@@ -25,7 +25,7 @@ except ImportError:
 WIDTH = 64
 HEIGHT = 32
 HORIZON = 9
-BIT_DEPTH = 2
+BIT_DEPTH = 1
 
 STEER_AXIS = 1  # 0=X  1=Y  2=Z
 STEER_FLIP = 1
@@ -161,7 +161,7 @@ def setup_display():
         clock_pin=board.MTX_CLK,
         latch_pin=board.MTX_LAT,
         output_enable_pin=board.MTX_OE,
-        doublebuffer=True,
+        doublebuffer=False,
     )
     display = framebufferio.FramebufferDisplay(matrix, auto_refresh=False)
     bitmap = displayio.Bitmap(WIDTH, HEIGHT, 32)
@@ -858,7 +858,7 @@ def countdown(display, bitmap, player_z):
         ox = 29 if len(word) == 1 else 27
         draw_text(bitmap, word, ox, 12, color)
         display.refresh(minimum_frames_per_second=0)
-        time.sleep(0.55)
+        time.sleep(0.28)
 
 
 def finish_screen(display, bitmap, player, coins):
