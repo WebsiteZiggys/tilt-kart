@@ -32,7 +32,7 @@ def load_game(module_name):
     return module.run
 
 
-def menu_loop(display, bitmap, lis, up, down, rest):
+def menu_loop(display, bitmap, lis, up, down, rest=0.0):
     index = 0
     was_up = True
     was_down = True
@@ -47,19 +47,6 @@ def menu_loop(display, bitmap, lis, up, down, rest):
             return index
         was_up = up_now
         was_down = down_now
-
-        steer = 0.0
-        if lis:
-            try:
-                steer = tk.read_steer(lis, rest)
-            except Exception:
-                steer = 0.0
-        if steer > 0.55:
-            index = min(len(GAMES) - 1, index + 1)
-            time.sleep(0.16)
-        elif steer < -0.55:
-            index = max(0, index - 1)
-            time.sleep(0.16)
 
         tk.clear(bitmap, tk.C_SKY1)
         tk.draw_text(bitmap, "PLAY", 22, 2, tk.C_YELLOW)
