@@ -4,7 +4,7 @@ A tilt-to-steer kart racer for the [Adafruit Matrix Portal Starter Kit](https://
 
 This is an original game. It plays like a tiny arcade racer, not Mario Kart, and it does not use Nintendo characters or art.
 
-**On the real panel:** tilt left/right to steer, `BUTTON_UP` to start/boost, `BUTTON_DOWN` to brake.
+**On the real panel:** tilt left/right to steer, `BUTTON_UP` to start, `BUTTON_DOWN` to brake. Boost only comes from rainbow pads that spawn on the road.
 
 **In the browser:** same race, keyboard controls, so you can try it before copying files to the board.
 
@@ -48,13 +48,13 @@ Open http://127.0.0.1:4173
 
 - `Enter` or click: start / race again
 - `←` `→` or `A` `D`: steer
-- `Space` or `↑`: boost
 - `↓` or `S`: brake
+- Rainbow pads spawn on the road at random — drive through them to boost
 - On a phone, tilt works after the browser allows device orientation
 
 ## How it plays
 
-Three laps on a fake-3D night course. Stay on the asphalt — grass is slow. Yellow coins score. Yellow bananas spin you out. Rainbow strips on the road are boosts: drive through them. Two CPU karts race with you.
+Seven laps on a longer, twistier night course. Stay on the asphalt — grass is punishing. Yellow coins score. Yellow bananas spin you out hard. Rainbow strips spawn ahead of you at random; they are the only boost. Three CPU karts start in front and race clean.
 
 The Portal’s LIS3DH accelerometer (I2C address `0x19`) is the steering wheel. That is the same sensor Adafruit uses for the digital-sand demos.
 

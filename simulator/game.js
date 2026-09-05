@@ -1,27 +1,31 @@
 const WIDTH = 64;
 const HEIGHT = 32;
 const HORIZON = 9;
-const LAPS = 3;
-const MAX_SPEED = 2.35;
-const BOOST_SPEED = 3.15;
-const ACCEL = 0.045;
-const BRAKE = 0.09;
-const DRAG = 0.012;
-const OFFROAD_DRAG = 0.055;
-const CENTRIFUGAL = 0.018;
+const LAPS = 7;
+const MAX_SPEED = 2.05;
+const BOOST_SPEED = 2.85;
+const ACCEL = 0.038;
+const BRAKE = 0.1;
+const DRAG = 0.016;
+const OFFROAD_DRAG = 0.09;
+const CENTRIFUGAL = 0.032;
+const PAD_SPAWN_MIN = 3.2;
+const PAD_SPAWN_MAX = 7.4;
 
 const TRACK = [
-  [55, 0.0],
-  [38, 2.2],
-  [28, 0.4],
-  [42, -2.8],
-  [22, 0.0],
-  [36, 1.8],
-  [30, -1.2],
-  [40, 0.0],
-  [34, 2.6],
-  [26, -2.1],
-  [48, 0.0],
+  [70, 0.0],
+  [48, 2.8],
+  [32, 0.8],
+  [52, -3.3],
+  [26, 0.2],
+  [44, 2.6],
+  [38, -2.4],
+  [30, 0.4],
+  [46, 3.1],
+  [34, -2.8],
+  [40, 1.6],
+  [50, -3.2],
+  [62, 0.0],
 ];
 
 const PALETTE = {
@@ -328,22 +332,37 @@ class Pickup {
 
 function makePickups() {
   const items = [];
-  let z = 18;
-  let seed = 7;
-  const rand = () => {
-    seed = (seed * 16807) % 2147483647;
-    return (seed - 1) / 2147483646;
-  };
-  const lanes = [-0.55, -0.2, 0.15, 0.5];
+  let z = 12;
+  const lanes = [-0.62, -0.35, -0.1, 0.2, 0.48, 0.68];
   while (z < TRACK_LEN - 8) {
-    const roll = rand();
-    const lane = lanes[Math.floor(rand() * lanes.length)];
-    if (roll < 0.34) items.push(new Pickup("coin", z, lane));
-    else if (roll < 0.58) items.push(new Pickup("banana", z, lane));
-    else if (roll < 0.74) items.push(new Pickup("pad", z, Math.abs(lane) < 0.4 ? 0 : lane));
-    z += 16 + rand() * 10;
+    const roll = Math.random();
+    const lane = lanes[Math.floor(Math.random() * lanes.length)];
+    if (roll < 0.2) items.push(new Pickup("coin", z, lane));
+    else if (roll < 0.78) items.push(new Pickup("banana", z, lane));
+    z += 9 + Math.random() * 7;
   }
   return items;
+}
+
+function livePad(pickups) {
+  return pickups.find((item) => item.kind === "pad" && item.alive) || null;
+}
+
+function expirePads(pickups, player) {
+  for (const item of pickups) {
+    if (item.kind !== "pad" || !item.alive) continue;
+    const ahead = (item.z - player.z + TRACK_LEN) % TRACK_LEN;
+    if (ahead > 88) item.alive = false;
+  }
+}
+
+function maybeSpawnPad(pickups, player, now, nextAt) {
+  expirePads(pickups, player);
+  if (livePad(pickups) || now < nextAt) return nextAt;
+  const ahead = 20 + Math.random() * 34;
+  const lanes = [-0.58, -0.28, 0, 0.28, 0.58];
+  pickups.push(new Pickup("pad", (player.z + ahead) % TRACK_LEN, lanes[Math.floor(Math.random() * lanes.length)]));
+  return now + PAD_SPAWN_MIN + Math.random() * (PAD_SPAWN_MAX - PAD_SPAWN_MIN);
 }
 
 function racePlace(player, cpus) {
@@ -408,8 +427,8 @@ function hitPickups(player, pickups, coins) {
     if (dz > reachZ || Math.abs(item.x - player.x) > reachX) continue;
     item.alive = false;
     if (item.kind === "banana") {
-      player.spin = 1.2;
-      player.speed *= 0.45;
+      player.spin = 1.65;
+      player.speed *= 0.32;
     } else if (item.kind === "coin") {
       coins += 1;
     } else if (item.kind === "pad") {
@@ -421,12 +440,12 @@ function hitPickups(player, pickups, coins) {
 }
 
 function cpuThink(cpu, player) {
-  const curve = curveAt(cpu.z + 10);
-  let target = -curve * 0.12 + Math.sin(cpu.z * 0.07) * 0.18;
-  if (Math.abs(cpu.z - player.z) < 6 && Math.abs(cpu.x - player.x) < 0.2) {
-    target += cpu.x < player.x ? 0.28 : -0.28;
+  const curve = curveAt(cpu.z + 12);
+  let target = -curve * 0.16 + Math.sin(cpu.z * 0.05) * 0.1;
+  if (Math.abs(cpu.z - player.z) < 7 && Math.abs(cpu.x - player.x) < 0.18) {
+    target += cpu.x < player.x ? 0.32 : -0.32;
   }
-  return Math.max(-1, Math.min(1, (target - cpu.x) * 1.6));
+  return Math.max(-1, Math.min(1, (target - cpu.x) * 2));
 }
 
 export function createGame(canvas, statusEl) {
@@ -443,15 +462,21 @@ export function createGame(canvas, statusEl) {
   let time = 0;
   let countdownAt = 0;
   let countdownWord = "3";
+  let nextPadAt = 0;
   let lastNow = performance.now();
   let physAcc = 0;
   const STEP = 0.03;
 
   function resetRace() {
-    player = new Racer(2, 0, 0.8, PALETTE.RED, true);
-    cpus = [new Racer(8, -0.25, 1.15, PALETTE.CYAN), new Racer(14, 0.35, 1.05, PALETTE.ORANGE)];
+    player = new Racer(2, 0, 0.65, PALETTE.RED, true);
+    cpus = [
+      new Racer(10, -0.22, 1.32, PALETTE.CYAN),
+      new Racer(16, 0.3, 1.24, PALETTE.ORANGE),
+      new Racer(22, -0.4, 1.18, PALETTE.MAGENTA),
+    ];
     pickups = makePickups();
     coins = 0;
+    nextPadAt = performance.now() / 1000 + 2.4 + Math.random() * 2;
     mode = "countdown";
     countdownAt = performance.now();
     countdownWord = "3";
@@ -462,10 +487,6 @@ export function createGame(canvas, statusEl) {
     if (keys.has("arrowleft") || keys.has("a")) steer -= 1;
     if (keys.has("arrowright") || keys.has("d")) steer += 1;
     return Math.max(-1, Math.min(1, steer));
-  }
-
-  function boosting() {
-    return keys.has(" ") || keys.has("arrowup") || keys.has("w");
   }
 
   function braking() {
@@ -480,7 +501,7 @@ export function createGame(canvas, statusEl) {
     buf.text("TILT", 23, 2, PALETTE.YELLOW);
     buf.text("KART", 23, 9, PALETTE.MAGENTA);
     if (Math.floor(time * 2) & 1) buf.text("GO", 28, 16, PALETTE.HUD);
-    statusEl.textContent = "Enter or click to race · arrows / A D steer · space boost";
+    statusEl.textContent = "Enter or click to race · arrows / A D steer · hit rainbow pads";
   }
 
   function renderCountdown() {
@@ -496,7 +517,7 @@ export function createGame(canvas, statusEl) {
 
   function stepRace() {
     const steer = inputSteer();
-    if (boosting() && player.boost <= 0) player.boost = 0.85;
+    nextPadAt = maybeSpawnPad(pickups, player, performance.now() / 1000, nextPadAt);
     advanceRacer(player, steer, braking(), curveAt(player.z));
     for (const cpu of cpus) advanceRacer(cpu, cpuThink(cpu, player), false, curveAt(cpu.z));
     coins = hitPickups(player, pickups, coins);

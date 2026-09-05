@@ -1,7 +1,8 @@
 # Tilt Kart — Matrix Portal M4 + 64x32 RGB matrix (Adafruit #4812)
 # Copy this file to CIRCUITPY as code.py
 #
-# Tilt the panel to steer. BUTTON_UP = start / boost. BUTTON_DOWN = brake.
+# Tilt the panel to steer. BUTTON_UP = start. BUTTON_DOWN = brake.
+# Boost only from rainbow pads that spawn on the road during the race.
 # If steering feels backwards, set STEER_FLIP = -1. If it barely responds,
 # try STEER_AXIS = 0 or 1.
 
@@ -30,28 +31,32 @@ STEER_FLIP = 1
 STEER_DEADZONE = 0.12
 STEER_SENS = 2.4
 
-LAPS = 3
-MAX_SPEED = 2.35
-BOOST_SPEED = 3.15
-ACCEL = 0.045
-BRAKE = 0.09
-DRAG = 0.012
-OFFROAD_DRAG = 0.055
-CENTRIFUGAL = 0.018
+LAPS = 7
+MAX_SPEED = 2.05
+BOOST_SPEED = 2.85
+ACCEL = 0.038
+BRAKE = 0.1
+DRAG = 0.016
+OFFROAD_DRAG = 0.09
+CENTRIFUGAL = 0.032
+PAD_SPAWN_MIN = 3.2
+PAD_SPAWN_MAX = 7.4
 
 # (length along track, curve strength)
 TRACK = (
-    (55, 0.0),
-    (38, 2.2),
-    (28, 0.4),
-    (42, -2.8),
-    (22, 0.0),
-    (36, 1.8),
-    (30, -1.2),
-    (40, 0.0),
-    (34, 2.6),
-    (26, -2.1),
-    (48, 0.0),
+    (70, 0.0),
+    (48, 2.8),
+    (32, 0.8),
+    (52, -3.3),
+    (26, 0.2),
+    (44, 2.6),
+    (38, -2.4),
+    (30, 0.4),
+    (46, 3.1),
+    (34, -2.8),
+    (40, 1.6),
+    (50, -3.2),
+    (62, 0.0),
 )
 
 # 3x5 caps, rows packed in 3 bits (MSB = left pixel)
@@ -478,19 +483,44 @@ class Pickup:
 
 def make_pickups():
     items = []
-    random.seed(7)
-    z = 18.0
+    z = 12.0
     while z < TRACK_LEN - 8:
         roll = random.random()
-        lane = random.choice((-0.55, -0.2, 0.15, 0.5))
-        if roll < 0.34:
+        lane = random.choice((-0.62, -0.35, -0.1, 0.2, 0.48, 0.68))
+        if roll < 0.2:
             items.append(Pickup("coin", z, lane))
-        elif roll < 0.58:
+        elif roll < 0.78:
             items.append(Pickup("banana", z, lane))
-        elif roll < 0.74:
-            items.append(Pickup("pad", z, 0.0 if abs(lane) < 0.4 else lane))
-        z += 16 + random.random() * 10
+        z += 9 + random.random() * 7
     return items
+
+
+def live_pad(pickups):
+    for item in pickups:
+        if item.kind == "pad" and item.alive:
+            return item
+    return None
+
+
+def expire_pads(pickups, player):
+    for item in pickups:
+        if item.kind != "pad" or not item.alive:
+            continue
+        ahead = (item.z - player.z + TRACK_LEN) % TRACK_LEN
+        if ahead > 88:
+            item.alive = False
+
+
+def maybe_spawn_pad(pickups, player, now, next_at):
+    expire_pads(pickups, player)
+    if live_pad(pickups):
+        return next_at
+    if now < next_at:
+        return next_at
+    ahead = 20 + random.random() * 34
+    lane = random.choice((-0.58, -0.28, 0.0, 0.28, 0.58))
+    pickups.append(Pickup("pad", (player.z + ahead) % TRACK_LEN, lane))
+    return now + PAD_SPAWN_MIN + random.random() * (PAD_SPAWN_MAX - PAD_SPAWN_MIN)
 
 
 def race_place(player, cpus):
@@ -557,8 +587,8 @@ def hit_pickups(player, pickups, coins):
             continue
         item.alive = False
         if item.kind == "banana":
-            player.spin = 1.2
-            player.speed *= 0.45
+            player.spin = 1.65
+            player.speed *= 0.32
         elif item.kind == "coin":
             coins += 1
         elif item.kind == "pad":
@@ -568,11 +598,11 @@ def hit_pickups(player, pickups, coins):
 
 
 def cpu_think(cpu, player):
-    curve = curve_at(cpu.z + 10)
-    target = -curve * 0.12 + math.sin(cpu.z * 0.07) * 0.18
-    if abs(cpu.z - player.z) < 6 and abs(cpu.x - player.x) < 0.2:
-        target += 0.28 if cpu.x < player.x else -0.28
-    steer = max(-1.0, min(1.0, (target - cpu.x) * 1.6))
+    curve = curve_at(cpu.z + 12)
+    target = -curve * 0.16 + math.sin(cpu.z * 0.05) * 0.1
+    if abs(cpu.z - player.z) < 7 and abs(cpu.x - player.x) < 0.18:
+        target += 0.32 if cpu.x < player.x else -0.32
+    steer = max(-1.0, min(1.0, (target - cpu.x) * 2.0))
     return steer
 
 
@@ -621,21 +651,22 @@ def finish_screen(display, bitmap, player, coins):
 
 
 def race_loop(display, bitmap, lis, up, down, rest):
-    player = Racer(2.0, 0.0, 0.8, C_RED, True)
+    player = Racer(2.0, 0.0, 0.65, C_RED, True)
     cpus = [
-        Racer(8.0, -0.25, 1.15, C_CYAN),
-        Racer(14.0, 0.35, 1.05, C_ORANGE),
+        Racer(10.0, -0.22, 1.32, C_CYAN),
+        Racer(16.0, 0.3, 1.24, C_ORANGE),
+        Racer(22.0, -0.4, 1.18, C_MAGENTA),
     ]
     pickups = make_pickups()
     coins = 0
+    next_pad_at = time.monotonic() + 2.4 + random.random() * 2.0
     countdown(display, bitmap, player.z)
 
     while True:
         now = time.monotonic()
         steer = read_steer(lis, rest)
         braking = button_pressed(down)
-        if button_pressed(up) and player.boost <= 0:
-            player.boost = 0.85
+        next_pad_at = maybe_spawn_pad(pickups, player, now, next_pad_at)
 
         curve = curve_at(player.z)
         advance_racer(player, steer, braking, curve)
