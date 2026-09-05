@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Tilt Kart — 64×32 Matrix Portal</title>
+    <title>Matrix Arcade — 64×32 Matrix Portal</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -24,8 +24,8 @@
     <main class="bench">
       <header class="stamp">
         <p class="sku">Adafruit #4812 · Matrix Portal M4</p>
-        <h1>TILT KART</h1>
-        <p class="tag">64×32 RGB · tilt to steer · crates · space uses item</p>
+        <h1>MATRIX ARCADE</h1>
+        <p class="tag">64×32 RGB · pick a game · add more in games.js</p>
       </header>
 
       <section class="panel" aria-label="LED matrix simulator">
@@ -41,32 +41,36 @@
         </div>
       </section>
 
-      <p id="status" class="status">Enter or click to race</p>
+      <p id="status" class="status">↑ ↓ pick a game</p>
 
       <dl class="controls">
         <div>
-          <dt>Steer</dt>
-          <dd>← → or A D · tilt a phone</dd>
+          <dt>Menu</dt>
+          <dd>↑ ↓ pick · Enter / space / click plays</dd>
         </div>
         <div>
-          <dt>Items</dt>
-          <dd>Hit flashing crates · space / click / UP uses the item</dd>
+          <dt>Kart</dt>
+          <dd>Tilt or A D steer · space uses an item</dd>
         </div>
         <div>
-          <dt>Brake</dt>
-          <dd>↓ or S · board DOWN button</dd>
+          <dt>Stack</dt>
+          <dd>Space / ↑ drops the moving bar</dd>
+        </div>
+        <div>
+          <dt>Swing</dt>
+          <dd>Tilt or ↑ ↓ aim · space swings like a Wii remote</dd>
         </div>
         <div>
           <dt>On the real panel</dt>
-          <dd>Copy <code>code.py</code> to CIRCUITPY</dd>
+          <dd>Copy the <code>circuitpython</code> folder to CIRCUITPY</dd>
         </div>
       </dl>
     </main>
     <script type="module">
-      import { createGame } from "./game.js";
+      import { createMenu } from "./menu.js";
       const canvas = document.getElementById("matrix");
       const status = document.getElementById("status");
-      createGame(canvas, status);
+      createMenu(canvas, status);
     </script>
   </body>
 </html>

@@ -1,41 +1,32 @@
-# Tilt Kart
+# Matrix Arcade
 
-A tilt-to-steer kart racer for the [Adafruit Matrix Portal Starter Kit](https://www.adafruit.com/product/4812) (ADABOX 016): **Matrix Portal M4 + 64×32 RGB LED matrix**.
+Games for the [Adafruit Matrix Portal Starter Kit](https://www.adafruit.com/product/4812) (ADABOX 016): **Matrix Portal M4 + 64×32 RGB LED matrix**.
 
-This is an original game. It plays like a tiny arcade racer, not Mario Kart, and it does not use Nintendo characters or art.
+The panel boots to a **PLAY** menu. Pick a game, play it, and you land back on the menu.
 
-**On the real panel:** tilt left/right to steer, `BUTTON_UP` to start or use an item, `BUTTON_DOWN` to brake.
+## Games
 
-**In the browser:** same race, keyboard controls, so you can try it before copying files to the board.
+- **KART** — tilt-to-steer racer, crates, items, 7 laps
+- **STACK** — drop the moving bar, stack as high as you can
+- **SWING** — tilt-tennis: aim with tilt, swing with the button, first to 4
 
-## What you need
-
-- Adafruit Matrix Portal M4 plugged into the 64×32 matrix
-- USB-C cable (data, not charge-only)
-- CircuitPython on the Portal ([install guide](https://learn.adafruit.com/adafruit-matrixportal-m4/circuitpython-setup))
-- From the [Adafruit CircuitPython library bundle](https://circuitpython.org/libraries):
-  - `adafruit_lis3dh.mpy`
-  - `adafruit_bus_device/`
-  - `adafruit_register/`
-
-`rgbmatrix`, `framebufferio`, and `displayio` are already built into the Matrix Portal CircuitPython build.
+This is original work. It does not use Nintendo characters or art.
 
 ## Load it onto the board
 
-1. Plug in the Portal. A `CIRCUITPY` drive should appear.
-2. Copy the three libraries above into `CIRCUITPY/lib/`.
-3. Copy [`circuitpython/code.py`](circuitpython/code.py) to `CIRCUITPY/code.py`.
-4. Hold the panel like a landscape picture and tilt it. Press the **UP** button to start.
+1. Put CircuitPython on the Portal ([setup guide](https://learn.adafruit.com/adafruit-matrixportal-m4/circuitpython-setup))
+2. From the [library bundle](https://circuitpython.org/libraries) copy into `CIRCUITPY/lib/`:
+   - `adafruit_lis3dh.mpy`
+   - `adafruit_bus_device/`
+   - `adafruit_register/`
+3. Copy **all** of these onto `CIRCUITPY`:
+   - `circuitpython/code.py`
+   - `circuitpython/tiltkart.py`
+   - `circuitpython/stacker.py`
+   - `circuitpython/swing.py`
+4. **DOWN** moves the cursor. **UP** starts the highlighted game.
 
-If steering feels backwards, open `code.py` and set:
-
-```python
-STEER_FLIP = -1
-```
-
-If it barely responds, try `STEER_AXIS = 0` instead of `1`.
-
-Power the matrix from the included 5V supply once you are done programming. USB-C can run the Portal, but a full-bright 64×32 panel is happier on the barrel jack / 5V supply.
+If kart steering feels backwards, set `STEER_FLIP = -1` in `tiltkart.py`. If it barely responds, try `STEER_AXIS = 0`.
 
 ## Play in the browser
 
@@ -46,28 +37,70 @@ python3 -m http.server 4173
 
 Open http://127.0.0.1:4173
 
-- `Enter` or click: start / race again, or use a held item during a race
-- `←` `→` or `A` `D`: steer
-- `↓` or `S`: brake
-- `Space`: use the item after a crate finishes cycling
-- On a phone, tilt works after the browser allows device orientation
+- Menu: `↑` `↓` to pick, Enter / space / click to play
+- Kart: `A` `D` or arrows steer, space uses an item, `S` brakes
+- Stack: space or `↑` drops the bar
+- Swing: `↑` `↓` aim, space / click swings, first to 4
+- After a game, Enter returns to the menu
 
-## How it plays
+## Add another game
 
-Seven laps on a longer, twistier night course. Stay on the asphalt — grass is punishing. Yellow coins score. Yellow bananas spin you out hard. Flashing crates spawn ahead of you: hit one and the HUD cycles, then you keep that item until you fire it.
+**On the board**
 
-- **Boost** (cyan): speed burst
-- **Peel** (yellow): drop a banana behind you
-- **Bomb** (orange): blows up the nearest rival
-- **Blue** (blue): hunts the racer in first and blows them up
+1. Create `circuitpython/mygame.py` with:
 
-Rainbow road pads still spawn sometimes as a guaranteed ground boost. Three CPU karts start in front.
+```python
+def run(display, bitmap, lis, up, down):
+    # draw on bitmap, then return to go back to the menu
+    return
+```
 
-The Portal’s LIS3DH accelerometer (I2C address `0x19`) is the steering wheel. That is the same sensor Adafruit uses for the digital-sand demos.
+2. Open `circuitpython/code.py` and add a line to `GAMES`:
+
+```python
+GAMES = (
+    ("KART", "tiltkart"),
+    ("STACK", "stacker"),
+    ("SWING", "swing"),
+    ("MINE", "mygame"),
+)
+```
+
+Keep the menu name to about 5 letters so it fits the 64×32 screen.
+
+**In the browser**
+
+1. Create `simulator/mygame.js` that exports `createMyGame(canvas, statusEl, onExit)` and calls `onExit()` when the player is done.
+2. Register it in `simulator/games.js`:
+
+```javascript
+export const GAMES = [
+  { name: "KART", create: createTiltKart },
+  { name: "STACK", create: createStacker },
+  { name: "SWING", create: createSwing },
+  { name: "MINE", create: createMyGame },
+];
+```
+
+## Kart
+
+Seven laps. Tilt to steer. Flashing crates cycle a random item; UP / space fires it (boost, peel, bomb, blue). Rainbow pads are a ground boost. Three CPU karts start ahead.
+
+## Stack
+
+A bar slides back and forth. Drop it onto the stack. Anything hanging off is cut away. Miss and the run ends.
+
+## Swing
+
+Tilt-tennis. You stand on the right. Tilt aims the racket, UP / space swings. Time the hit when the ball reaches you. First to 4 points wins.
 
 ## Project layout
 
 ```
-circuitpython/code.py   # drop this on CIRCUITPY
-simulator/              # 64x32 LED preview in a browser
+circuitpython/code.py      # menu + game list
+circuitpython/tiltkart.py  # Kart
+circuitpython/stacker.py   # Stack
+circuitpython/swing.py     # Swing tennis
+simulator/                 # same arcade in a browser
+simulator/games.js         # browser game list
 ```

@@ -1,5 +1,5 @@
-const WIDTH = 64;
-const HEIGHT = 32;
+export const WIDTH = 64;
+export const HEIGHT = 32;
 const HORIZON = 9;
 const LAPS = 7;
 const MAX_SPEED = 2.05;
@@ -31,7 +31,7 @@ const TRACK = [
   [62, 0.0],
 ];
 
-const PALETTE = {
+export const PALETTE = {
   BLACK: "#000000",
   SKY1: "#12002a",
   SKY2: "#2a1060",
@@ -68,7 +68,7 @@ const RAINBOW = [PALETTE.RB0, PALETTE.RB1, PALETTE.RB2, PALETTE.RB3, PALETTE.RB4
 const PAD_HALF_Z = 5.8;
 const PAD_HALF_X = 0.42;
 
-const FONT = {
+export const FONT = {
   " ": 0,
   A: [0b010, 0b101, 0b111, 0b101, 0b101],
   B: [0b110, 0b101, 0b110, 0b101, 0b110],
@@ -79,12 +79,14 @@ const FONT = {
   I: [0b111, 0b010, 0b010, 0b010, 0b111],
   K: [0b101, 0b101, 0b110, 0b101, 0b101],
   L: [0b100, 0b100, 0b100, 0b100, 0b111],
+  M: [0b101, 0b111, 0b111, 0b101, 0b101],
   N: [0b101, 0b111, 0b111, 0b101, 0b101],
   O: [0b010, 0b101, 0b101, 0b101, 0b010],
   P: [0b110, 0b101, 0b110, 0b100, 0b100],
   R: [0b110, 0b101, 0b110, 0b101, 0b101],
   S: [0b011, 0b100, 0b010, 0b001, 0b110],
   T: [0b111, 0b010, 0b010, 0b010, 0b010],
+  U: [0b101, 0b101, 0b101, 0b101, 0b111],
   W: [0b101, 0b101, 0b111, 0b111, 0b101],
   Y: [0b101, 0b101, 0b010, 0b010, 0b010],
   0: [0b111, 0b101, 0b101, 0b101, 0b111],
@@ -101,6 +103,8 @@ const FONT = {
   "!": [0b010, 0b010, 0b010, 0b000, 0b010],
   $: [0b010, 0b111, 0b110, 0b011, 0b111],
   "?": [0b111, 0b001, 0b011, 0b000, 0b010],
+  ">": [0b100, 0b110, 0b111, 0b110, 0b100],
+  "-": [0b000, 0b000, 0b111, 0b000, 0b000],
 };
 
 function buildTrack() {
@@ -123,7 +127,7 @@ function curveAt(z) {
   return 0;
 }
 
-class PixelBuffer {
+export class PixelBuffer {
   constructor() {
     this.pixels = new Array(WIDTH * HEIGHT).fill(PALETTE.BLACK);
   }
@@ -603,12 +607,13 @@ function cpuThink(cpu, player) {
   return Math.max(-1, Math.min(1, (target - cpu.x) * 2));
 }
 
-export function createGame(canvas, statusEl) {
+export function createGame(canvas, statusEl, onExit) {
   const ctx = canvas.getContext("2d");
   const buf = new PixelBuffer();
   const keys = new Set();
+  let alive = true;
   let tilt = 0;
-  let mode = "title";
+  let mode = onExit ? "countdown" : "title";
   let player;
   let cpus;
   let pickups;
@@ -744,7 +749,7 @@ export function createGame(canvas, statusEl) {
     else buf.text(`P${player.place}`, 26, 8, PALETTE.CYAN);
     buf.text(`$${coins}`, 26, 16, PALETTE.COIN);
     buf.text("GO", 28, 24, PALETTE.HUD);
-    statusEl.textContent = "Enter to race again";
+    statusEl.textContent = onExit ? "Enter for menu" : "Enter to race again";
   }
 
   function paint() {
@@ -783,6 +788,7 @@ export function createGame(canvas, statusEl) {
   }
 
   function frame(now) {
+    if (!alive) return;
     const dt = Math.min(0.08, (now - lastNow) / 1000);
     lastNow = now;
     time = now / 1000;
@@ -800,26 +806,54 @@ export function createGame(canvas, statusEl) {
     requestAnimationFrame(frame);
   }
 
+  function teardown() {
+    alive = false;
+    window.removeEventListener("keydown", onKeyDown);
+    window.removeEventListener("keyup", onKeyUp);
+    window.removeEventListener("click", startOrRestart);
+    window.removeEventListener("deviceorientation", onOrient);
+  }
+
   function startOrRestart() {
-    if (mode === "title" || mode === "finish") resetRace();
+    if (!alive) return;
+    if (mode === "finish") {
+      if (onExit) {
+        teardown();
+        onExit();
+        return;
+      }
+      resetRace();
+      return;
+    }
+    if (mode === "title") resetRace();
     else if (mode === "race") useItem(player, cpus, pickups, shots);
   }
 
-  window.addEventListener("keydown", (event) => {
+  function onKeyDown(event) {
     keys.add(event.key.toLowerCase());
     if (event.key === "Enter") startOrRestart();
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(event.key)) {
       event.preventDefault();
     }
-  });
-  window.addEventListener("keyup", (event) => keys.delete(event.key.toLowerCase()));
-  window.addEventListener("click", startOrRestart);
+  }
 
-  window.addEventListener("deviceorientation", (event) => {
+  function onKeyUp(event) {
+    keys.delete(event.key.toLowerCase());
+  }
+
+  function onOrient(event) {
     if (typeof event.gamma !== "number") return;
     tilt = Math.max(-1, Math.min(1, event.gamma / 22));
-  });
+  }
 
+  window.addEventListener("keydown", onKeyDown);
+  window.addEventListener("keyup", onKeyUp);
+  window.addEventListener("click", startOrRestart);
+  window.addEventListener("deviceorientation", onOrient);
+
+  if (onExit) resetRace();
   requestAnimationFrame(frame);
-  return { startOrRestart };
+  return { startOrRestart, stop: teardown };
 }
+
+export const createTiltKart = createGame;
