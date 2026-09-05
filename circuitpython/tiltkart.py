@@ -200,6 +200,11 @@ def setup_display():
     group = displayio.Group()
     group.append(tile)
     display.root_group = group
+    if hasattr(display, "show"):
+        try:
+            display.show(group)
+        except Exception:
+            pass
     return display, bitmap
 
 
@@ -273,6 +278,39 @@ def rest_axis(lis):
             pass
         time.sleep(0.02)
     return total / count if count else 0.0
+
+
+def rest_xyz(lis):
+    if lis is None:
+        return (0.0, 0.0, 0.0)
+    acc = [0.0, 0.0, 0.0]
+    count = 0
+    for _ in range(6):
+        try:
+            a = lis.acceleration
+            acc[0] += a[0]
+            acc[1] += a[1]
+            acc[2] += a[2]
+            count += 1
+        except Exception:
+            pass
+        time.sleep(0.02)
+    if not count:
+        return (0.0, 0.0, 0.0)
+    return (acc[0] / count, acc[1] / count, acc[2] / count)
+
+
+def motion_xyz(lis, rest):
+    if lis is None:
+        return 0.0, 0.0, 0.0, 0.0
+    try:
+        a = lis.acceleration
+    except Exception:
+        return 0.0, 0.0, 0.0, 0.0
+    dx = a[0] - rest[0]
+    dy = a[1] - rest[1]
+    dz = a[2] - rest[2]
+    return dx, dy, dz, (dx * dx + dy * dy + dz * dz) ** 0.5
 
 
 def plot(bitmap, x, y, color):

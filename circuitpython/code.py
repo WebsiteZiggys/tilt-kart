@@ -1,9 +1,6 @@
 # Matrix Arcade — Adafruit Matrix Portal M4 + 64x32 (product 4812)
-# Copy this folder to CIRCUITPY: code.py, tiltkart.py, stacker.py, swing.py
-#
-# Buttons are on the BACK of the panel, on the Portal PCB:
-#   top = reset, middle = UP / play, bottom = DOWN / next.
-# Tilt also works: tip to move, hold a tip to play.
+# Tip the panel to move. Hold a tip to play.
+# Buttons are on the BACK of the panel (middle = play, bottom = next).
 
 import time
 
@@ -13,7 +10,7 @@ import tiltkart as tk
 try:
     import neopixel
 
-    _PIX = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.2)
+    _PIX = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.25)
 except Exception:
     _PIX = None
 
@@ -38,16 +35,25 @@ def load_game(module_name):
     return __import__(module_name).run
 
 
-def menu_loop(display, bitmap, lis, up, down, rest=0.0):
+def _fmt(n):
+    v = int(n)
+    if v < -9:
+        return "-9"
+    if v > 9:
+        return "9"
+    return str(v)
+
+
+def menu_loop(display, bitmap, lis, up, down, rest):
     index = 0
     was_up = False
     was_down = False
     tilt_wait = 0
     hold = 0
+    tick = 0
     while True:
         up_now = not up.value
         down_now = not down.value
-
         if down_now and not was_down:
             index = (index + 1) % len(GAMES)
         if up_now and not was_up:
@@ -56,63 +62,57 @@ def menu_loop(display, bitmap, lis, up, down, rest=0.0):
         was_up = up_now
         was_down = down_now
 
-        if _PIX:
-            if up_now:
-                _PIX[0] = (0, 255, 255)
-            elif down_now:
-                _PIX[0] = (255, 220, 0)
-            else:
-                _PIX[0] = (40, 0, 0)
-
-        steer = 0.0
-        if lis:
-            try:
-                steer = tk.read_steer(lis, rest)
-            except Exception:
-                steer = 0.0
+        dx, dy, dz, mag = tk.motion_xyz(lis, rest)
+        side = dy if abs(dy) >= abs(dx) else dx
         if tilt_wait > 0:
             tilt_wait -= 1
-        elif steer > 0.4:
+        elif side > 1.6:
             index = (index + 1) % len(GAMES)
-            tilt_wait = 10
-        elif steer < -0.4:
+            tilt_wait = 8
+        elif side < -1.6:
             index = (index - 1) % len(GAMES)
-            tilt_wait = 10
-        if abs(steer) > 0.8:
+            tilt_wait = 8
+        if mag > 3.5:
             hold += 1
-            if hold > 16:
+            if hold > 12:
                 return index
         else:
             hold = 0
 
+        if _PIX:
+            if up_now or down_now:
+                _PIX[0] = (0, 255, 80)
+            elif tick & 8:
+                _PIX[0] = (0, 0, 80)
+            else:
+                _PIX[0] = (80, 0, 40)
+
         if up_now:
-            tk.clear(bitmap, tk.C_CYAN)
+            bg = tk.C_CYAN
         elif down_now:
-            tk.clear(bitmap, tk.C_YELLOW)
+            bg = tk.C_YELLOW
+        elif tick & 16:
+            bg = tk.C_SKY2
         else:
-            tk.clear(bitmap, tk.C_SKY1)
-        tk.draw_text(bitmap, "PLAY", 22, 2, tk.C_YELLOW if not up_now else tk.C_SKY1)
-        start = 0
-        if index > 1:
-            start = index - 1
-        visible = GAMES[start : start + 3]
-        for i, (name, _mod) in enumerate(visible):
-            real = start + i
-            y = 11 + i * 7
-            color = tk.C_MAGENTA if real == index else tk.C_HUD
-            if real == index:
-                tk.draw_text(bitmap, ">", 8, y, tk.C_CYAN)
-            tk.draw_text(bitmap, name, 16, y, color)
-        tk.draw_text(bitmap, "TILT", 22, 26, tk.C_HUD)
+            bg = tk.C_SKY1
+        tk.clear(bitmap, bg)
+        tk.draw_text(bitmap, "PLAY", 22, 1, tk.C_YELLOW)
+        tk.draw_text(bitmap, _fmt(dx), 2, 8, tk.C_CYAN)
+        tk.draw_text(bitmap, _fmt(dy), 14, 8, tk.C_CYAN)
+        tk.draw_text(bitmap, _fmt(dz), 26, 8, tk.C_CYAN)
+        name = GAMES[index][0]
+        tk.draw_text(bitmap, name, 16, 16, tk.C_WHITE)
+        tk.draw_text(bitmap, "TIP", 24, 25, tk.C_HUD)
         display.refresh(minimum_frames_per_second=0)
-        time.sleep(0.02)
+        tick += 1
+        time.sleep(0.03)
 
 
 def main():
     display, bitmap = tk.setup_display()
     up, down = tk.setup_buttons()
     lis = tk.setup_accel()
-    rest = tk.rest_axis(lis)
+    rest = tk.rest_xyz(lis)
     while True:
         choice = menu_loop(display, bitmap, lis, up, down, rest)
         load_game(GAMES[choice][1])(display, bitmap, lis, up, down)
