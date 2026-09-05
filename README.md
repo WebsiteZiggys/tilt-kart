@@ -54,7 +54,7 @@ Open http://127.0.0.1:4173
 
 ## How it plays
 
-Three laps on a fake-3D night course. Stay on the asphalt — grass is slow. Yellow coins score. Yellow bananas spin you out. Magenta pads boost. Two CPU karts race with you.
+Three laps on a fake-3D night course. Stay on the asphalt — grass is slow. Yellow coins score. Yellow bananas spin you out. Rainbow strips on the road are boosts: drive through them. Two CPU karts race with you.
 
 The Portal’s LIS3DH accelerometer (I2C address `0x19`) is the steering wheel. That is the same sensor Adafruit uses for the digital-sand demos.
 

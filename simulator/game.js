@@ -49,7 +49,17 @@ const PALETTE = {
   SHADOW: "#101018",
   BANANA: "#ffe040",
   COIN: "#ffc000",
+  RB0: "#ff2030",
+  RB1: "#ff8010",
+  RB2: "#ffe020",
+  RB3: "#20e048",
+  RB4: "#2090ff",
+  RB5: "#c040ff",
 };
+
+const RAINBOW = [PALETTE.RB0, PALETTE.RB1, PALETTE.RB2, PALETTE.RB3, PALETTE.RB4, PALETTE.RB5];
+const PAD_HALF_Z = 5.8;
+const PAD_HALF_X = 0.42;
 
 const FONT = {
   " ": 0,
@@ -161,7 +171,26 @@ function drawSky(buf, t) {
   }
 }
 
-function drawRoad(buf, playerZ, playerX) {
+function wrapDist(a, b) {
+  let d = Math.abs((a - b + TRACK_LEN) % TRACK_LEN);
+  if (d > TRACK_LEN / 2) d = TRACK_LEN - d;
+  return d;
+}
+
+function padAt(worldZ, pickups) {
+  if (!pickups) return null;
+  for (const item of pickups) {
+    if (item.kind !== "pad" || !item.alive) continue;
+    if (wrapDist(worldZ, item.z) < PAD_HALF_Z) return item;
+  }
+  return null;
+}
+
+function rainbowColor(worldZ, x, center) {
+  return RAINBOW[Math.abs(Math.floor(worldZ * 1.3 + (x - center) * 0.5)) % 6];
+}
+
+function drawRoad(buf, playerZ, playerX, pickups = null) {
   for (let y = HEIGHT - 1; y > HORIZON; y--) {
     const span = HEIGHT - 1 - HORIZON;
     const near = (y - HORIZON) / span;
@@ -177,6 +206,7 @@ function drawRoad(buf, playerZ, playerX) {
     const left = center - half;
     const right = center + half;
     const rumbleW = 1.2 + near * 2.4;
+    const pad = padAt(worldZ, pickups);
     const row = y * WIDTH;
     for (let x = 0; x < WIDTH; x++) {
       if (x < left - rumbleW || x > right + rumbleW) {
@@ -184,11 +214,16 @@ function drawRoad(buf, playerZ, playerX) {
       } else if (x < left || x > right) {
         buf.pixels[row + x] = finish && ((x + y) & 1) ? PALETTE.FINISH : rumble;
       } else {
+        const lane = half ? (x - center) / half : 0;
+        const onPad = pad && Math.abs(lane - pad.x) < PAD_HALF_X;
         const edge = x < left + 1.1 || x > right - 1.1;
         const mid = Math.abs(x - center) < 0.7 + near * 0.4;
         const dash = stripe && mid && near > 0.18;
         if (finish) {
           buf.pixels[row + x] = (Math.floor(x) + Math.floor(worldZ)) & 1 ? PALETTE.WHITE : PALETTE.BLACK;
+        } else if (onPad) {
+          const rim = Math.abs(Math.abs(lane - pad.x) - PAD_HALF_X) < 0.07;
+          buf.pixels[row + x] = rim ? PALETTE.WHITE : rainbowColor(worldZ, x, center);
         } else if (dash) {
           buf.pixels[row + x] = PALETTE.DASH;
         } else if (edge) {
@@ -250,10 +285,12 @@ function drawCoin(buf, sx, sy, frame) {
   if (frame) buf.plot(sx, sy - 1, PALETTE.YELLOW);
 }
 
-function drawPad(buf, sx, sy) {
-  buf.plot(sx - 1, sy, PALETTE.MAGENTA);
-  buf.plot(sx, sy, PALETTE.WHITE);
-  buf.plot(sx + 1, sy, PALETTE.MAGENTA);
+function drawPad(buf, sx, sy, scale, worldZ) {
+  const span = 1 + scale;
+  for (let dx = -span; dx <= span; dx++) {
+    buf.plot(sx + dx, sy, rainbowColor(worldZ, sx + dx, sx));
+    if (scale > 1) buf.plot(sx + dx, sy + 1, rainbowColor(worldZ + 1, sx + dx, sx));
+  }
 }
 
 function drawPlayerKart(buf, boost, spin) {
@@ -366,7 +403,9 @@ function hitPickups(player, pickups, coins) {
     if (!item.alive) continue;
     let dz = Math.abs((item.z - player.z + TRACK_LEN) % TRACK_LEN);
     if (dz > TRACK_LEN / 2) dz = TRACK_LEN - dz;
-    if (dz > 2.4 || Math.abs(item.x - player.x) > 0.22) continue;
+    const reachZ = item.kind === "pad" ? PAD_HALF_Z : 2.4;
+    const reachX = item.kind === "pad" ? PAD_HALF_X : 0.22;
+    if (dz > reachZ || Math.abs(item.x - player.x) > reachX) continue;
     item.alive = false;
     if (item.kind === "banana") {
       player.spin = 1.2;
@@ -434,8 +473,9 @@ export function createGame(canvas, statusEl) {
   }
 
   function renderTitle() {
+    const demoPads = [new Pickup("pad", 28, 0), new Pickup("pad", 70, -0.2)];
     drawSky(buf, time);
-    drawRoad(buf, demoZ, Math.sin(time * 0.7) * 0.25);
+    drawRoad(buf, demoZ, Math.sin(time * 0.7) * 0.25, demoPads);
     drawPlayerKart(buf, false, false);
     buf.text("TILT", 23, 2, PALETTE.YELLOW);
     buf.text("KART", 23, 9, PALETTE.MAGENTA);
@@ -467,14 +507,14 @@ export function createGame(canvas, statusEl) {
   function renderRace() {
 
     drawSky(buf, player.z * 0.04);
-    drawRoad(buf, player.z, player.x);
+    drawRoad(buf, player.z, player.x, pickups);
     for (const item of pickups) {
       if (!item.alive) continue;
       const proj = projectSprite(player.z, player.x, item.z, item.x);
       if (!proj) continue;
       if (item.kind === "banana") drawBanana(buf, proj.sx, proj.sy, proj.scale);
       else if (item.kind === "coin") drawCoin(buf, proj.sx, proj.sy, Math.floor(time * 8) & 1);
-      else drawPad(buf, proj.sx, proj.sy);
+      else if (proj.scale === 1) drawPad(buf, proj.sx, proj.sy, proj.scale, item.z);
     }
     for (const cpu of cpus) {
       let cz = cpu.z;

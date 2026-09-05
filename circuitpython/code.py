@@ -115,6 +115,16 @@ C_ORANGE = 20
 C_SHADOW = 21
 C_BANANA = 22
 C_COIN = 23
+C_RB0 = 24
+C_RB1 = 25
+C_RB2 = 26
+C_RB3 = 27
+C_RB4 = 28
+C_RB5 = 29
+
+RAINBOW = (C_RB0, C_RB1, C_RB2, C_RB3, C_RB4, C_RB5)
+PAD_HALF_Z = 5.8
+PAD_HALF_X = 0.42
 
 
 def setup_display():
@@ -164,6 +174,12 @@ def setup_display():
     palette[C_SHADOW] = 0x101018
     palette[C_BANANA] = 0xFFE040
     palette[C_COIN] = 0xFFC000
+    palette[C_RB0] = 0xFF2030
+    palette[C_RB1] = 0xFF8010
+    palette[C_RB2] = 0xFFE020
+    palette[C_RB3] = 0x20E048
+    palette[C_RB4] = 0x2090FF
+    palette[C_RB5] = 0xC040FF
     tile = displayio.TileGrid(bitmap, pixel_shader=palette)
     group = displayio.Group()
     group.append(tile)
@@ -289,7 +305,29 @@ def draw_sky(bitmap, t):
             plot(bitmap, x, y, C_HILL)
 
 
-def draw_road(bitmap, player_z, player_x, dt_stripe):
+def wrap_dist(a, b):
+    d = abs((a - b + TRACK_LEN) % TRACK_LEN)
+    if d > TRACK_LEN / 2:
+        d = TRACK_LEN - d
+    return d
+
+
+def pad_at(world_z, pickups):
+    if not pickups:
+        return None
+    for item in pickups:
+        if item.kind != "pad" or not item.alive:
+            continue
+        if wrap_dist(world_z, item.z) < PAD_HALF_Z:
+            return item
+    return None
+
+
+def rainbow_color(world_z, x, center):
+    return RAINBOW[int(world_z * 1.3 + (x - center) * 0.5) % 6]
+
+
+def draw_road(bitmap, player_z, player_x, dt_stripe, pickups=None):
     for y in range(HEIGHT - 1, HORIZON, -1):
         span = HEIGHT - 1 - HORIZON
         near = (y - HORIZON) / span
@@ -305,17 +343,23 @@ def draw_road(bitmap, player_z, player_x, dt_stripe):
         left = center - half
         right = center + half
         rumble_w = 1.2 + near * 2.4
+        pad = pad_at(world_z, pickups)
         for x in range(WIDTH):
             if x < left - rumble_w or x > right + rumble_w:
                 bitmap[x, y] = grass
             elif x < left or x > right:
                 bitmap[x, y] = C_FINISH if finish and ((x + y) & 1) else rumble
             else:
+                lane = (x - center) / half if half else 0
+                on_pad = pad and abs(lane - pad.x) < PAD_HALF_X
                 edge = (x < left + 1.1) or (x > right - 1.1)
                 mid = abs(x - center) < (0.7 + near * 0.4)
                 dash = stripe and mid and near > 0.18
                 if finish:
                     bitmap[x, y] = C_WHITE if ((int(x) + int(world_z)) & 1) else C_BLACK
+                elif on_pad:
+                    rim = abs(abs(lane - pad.x) - PAD_HALF_X) < 0.07
+                    bitmap[x, y] = C_WHITE if rim else rainbow_color(world_z, x, center)
                 elif dash:
                     bitmap[x, y] = C_DASH
                 elif edge:
@@ -378,10 +422,12 @@ def draw_coin(bitmap, sx, sy, frame):
         plot(bitmap, sx, sy - 1, C_YELLOW)
 
 
-def draw_pad(bitmap, sx, sy):
-    plot(bitmap, sx - 1, sy, C_MAGENTA)
-    plot(bitmap, sx, sy, C_WHITE)
-    plot(bitmap, sx + 1, sy, C_MAGENTA)
+def draw_pad(bitmap, sx, sy, scale, world_z):
+    span = 1 + scale
+    for dx in range(-span, span + 1):
+        plot(bitmap, sx + dx, sy, rainbow_color(world_z, sx + dx, sx))
+        if scale > 1:
+            plot(bitmap, sx + dx, sy + 1, rainbow_color(world_z + 1, sx + dx, sx))
 
 
 def player_kart(bitmap, boost, spin):
@@ -503,9 +549,11 @@ def hit_pickups(player, pickups, coins):
         dz = abs((item.z - player.z + TRACK_LEN) % TRACK_LEN)
         if dz > TRACK_LEN / 2:
             dz = TRACK_LEN - dz
-        if dz > 2.4:
+        reach_z = PAD_HALF_Z if item.kind == "pad" else 2.4
+        reach_x = PAD_HALF_X if item.kind == "pad" else 0.22
+        if dz > reach_z:
             continue
-        if abs(item.x - player.x) > 0.22:
+        if abs(item.x - player.x) > reach_x:
             continue
         item.alive = False
         if item.kind == "banana":
@@ -531,9 +579,10 @@ def cpu_think(cpu, player):
 def title_loop(display, bitmap, lis, up, rest):
     t = 0.0
     demo_z = 0.0
+    demo_pads = (Pickup("pad", 28.0, 0.0), Pickup("pad", 70.0, -0.2))
     while True:
         draw_sky(bitmap, t)
-        draw_road(bitmap, demo_z, math.sin(t * 0.7) * 0.25, demo_z)
+        draw_road(bitmap, demo_z, math.sin(t * 0.7) * 0.25, demo_z, demo_pads)
         player_kart(bitmap, False, False)
         draw_text(bitmap, "TILT", 23, 2, C_YELLOW)
         draw_text(bitmap, "KART", 23, 9, C_MAGENTA)
@@ -596,7 +645,7 @@ def race_loop(display, bitmap, lis, up, down, rest):
         place = race_place(player, cpus)
 
         draw_sky(bitmap, player.z * 0.04)
-        draw_road(bitmap, player.z, player.x, player.z)
+        draw_road(bitmap, player.z, player.x, player.z, pickups)
         for item in pickups:
             if not item.alive:
                 continue
@@ -608,8 +657,8 @@ def race_loop(display, bitmap, lis, up, down, rest):
                 draw_banana(bitmap, sx, sy, scale)
             elif item.kind == "coin":
                 draw_coin(bitmap, sx, sy, int(now * 8) & 1)
-            else:
-                draw_pad(bitmap, sx, sy)
+            elif scale == 1:
+                draw_pad(bitmap, sx, sy, scale, item.z)
         for cpu in cpus:
             cz = cpu.z
             if cpu.lap > player.lap:
