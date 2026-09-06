@@ -360,23 +360,7 @@ def draw_text(bitmap, text, x, y, color):
 
 def draw_sky(bitmap, t):
     for y in range(HORIZON + 1):
-        if y < 3:
-            color = C_SKY1
-        elif y < 6:
-            color = C_SKY2
-        else:
-            color = C_SKY3
-        fill_row(bitmap, y, color)
-    sun_x = 48 + int(math.sin(t * 0.15) * 2)
-    for dy in range(-2, 3):
-        for dx in range(-2, 3):
-            if dx * dx + dy * dy <= 4:
-                plot(bitmap, sun_x + dx, 4 + dy, C_SUN)
-    for x in range(WIDTH):
-        hill = 2 + int(1.6 * math.sin(x * 0.22 + t * 0.05) + math.sin(x * 0.07))
-        hy = HORIZON - hill
-        for y in range(max(0, hy), HORIZON + 1):
-            plot(bitmap, x, y, C_HILL)
+        fill_row(bitmap, y, C_SKY1)
 
 
 def wrap_dist(a, b):
