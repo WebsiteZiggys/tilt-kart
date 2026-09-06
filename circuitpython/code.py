@@ -1,75 +1,111 @@
-# Simple 2D racer.
-# BACK of the panel, on the Portal next to USB-C:
-#   top = reset (ignore)  middle = left  bottom = right
-# Tip also steers.
+# Rainbow sand — no buttons. Tilt the panel and the grains pour.
+# If the accelerometer is missing, gravity slowly spins on its own.
 
+import math
+import random
 import time
 
-import board
 import tiltkart as tk
 
-try:
-    import neopixel
+W = 64
+H = 32
+COLORS = (
+    tk.C_RB0,
+    tk.C_RB1,
+    tk.C_RB2,
+    tk.C_RB3,
+    tk.C_RB4,
+    tk.C_RB5,
+    tk.C_CYAN,
+    tk.C_MAGENTA,
+    tk.C_YELLOW,
+    tk.C_ORANGE,
+)
 
-    PIX = neopixel.NeoPixel(board.NEOPIXEL, 1, brightness=0.35)
-except Exception:
-    PIX = None
+
+def _dir(g):
+    if g > 1.6:
+        return 1
+    if g < -1.6:
+        return -1
+    return 0
+
+
+def _step(grid, sx, sy):
+    xs = range(W - 1, -1, -1) if sx > 0 else range(W)
+    ys = range(H - 1, -1, -1) if sy > 0 else range(H)
+    for y in ys:
+        row = y * W
+        for x in xs:
+            color = grid[row + x]
+            if color == 0:
+                continue
+            nx = x + sx
+            ny = y + sy
+            dest = ny * W + nx
+            if 0 <= nx < W and 0 <= ny < H and grid[dest] == 0:
+                grid[row + x] = 0
+                grid[dest] = color
+                continue
+            for px, py in ((-sy, sx), (sy, -sx)):
+                tx = x + sx + px
+                ty = y + sy + py
+                if 0 <= tx < W and 0 <= ty < H and grid[ty * W + tx] == 0:
+                    grid[row + x] = 0
+                    grid[ty * W + tx] = color
+                    break
+
+
+def _spawn(grid, sx, sy, color):
+    if sy > 0:
+        spots = ((x, 0) for x in range(8, 56))
+    elif sy < 0:
+        spots = ((x, H - 1) for x in range(8, 56))
+    elif sx > 0:
+        spots = ((0, y) for y in range(4, 28))
+    else:
+        spots = ((W - 1, y) for y in range(4, 28))
+    for x, y in spots:
+        i = y * W + x
+        if grid[i] == 0 and random.random() < 0.08:
+            grid[i] = color
+            return
 
 
 def main():
     display, bitmap = tk.setup_display()
-    up, down = tk.setup_buttons()
     lis = tk.setup_accel()
-    rest = tk.rest_axis(lis)
-    x = 32.0
-    z = 0
+    grid = bytearray(W * H)
+    for _ in range(260):
+        x = random.randint(6, W - 7)
+        y = random.randint(2, H - 3)
+        i = y * W + x
+        if grid[i] == 0:
+            grid[i] = COLORS[random.randrange(len(COLORS))]
+    tick = 0
     while True:
-        up_now = not up.value
-        down_now = not down.value
-        steer = tk.read_steer(lis, rest)
-        if up_now:
-            x -= 2.2
-        if down_now:
-            x += 2.2
-        x += steer * 2.4
-        if x < 6:
-            x = 6
-        if x > 57:
-            x = 57
-
-        if PIX:
-            if up_now:
-                PIX[0] = (0, 255, 255)
-            elif down_now:
-                PIX[0] = (255, 220, 0)
-            else:
-                PIX[0] = (0, 0, 40)
-
-        if up_now:
-            tk.clear(bitmap, tk.C_CYAN)
-        elif down_now:
-            tk.clear(bitmap, tk.C_YELLOW)
+        if lis:
+            try:
+                ax, ay, _az = lis.acceleration
+            except Exception:
+                ax, ay = 0.0, 9.0
         else:
-            tk.clear(bitmap, tk.C_GRASS_A)
-        for y in range(8, 32):
-            for px in range(10, 54):
-                bitmap[px, y] = tk.C_ROAD
-            bitmap[10, y] = tk.C_RUMBLE_A if ((y + z) & 2) else tk.C_WHITE
-            bitmap[53, y] = tk.C_RUMBLE_A if ((y + z) & 2) else tk.C_WHITE
-            if ((y + z) & 3) == 0:
-                bitmap[31, y] = tk.C_YELLOW
-                bitmap[32, y] = tk.C_YELLOW
-        tk.draw_text(bitmap, "KART", 22, 1, tk.C_SKY1 if (up_now or down_now) else tk.C_YELLOW)
-
-        cx = int(x)
-        for dy in range(4):
-            for dx in range(-3, 4):
-                tk.plot(bitmap, cx + dx, 26 + dy, tk.C_RED)
-        tk.plot(bitmap, cx, 27, tk.C_WHITE)
-
+            now = time.monotonic()
+            ax = math.sin(now * 0.7) * 8.0
+            ay = math.cos(now * 0.7) * 8.0
+        sx = _dir(ax)
+        sy = _dir(ay)
+        if sx == 0 and sy == 0:
+            sy = 1
+        _step(grid, sx, sy)
+        if tick & 1:
+            _spawn(grid, sx, sy, COLORS[tick % len(COLORS)])
+        tk.clear(bitmap, tk.C_BLACK)
+        for i, color in enumerate(grid):
+            if color:
+                bitmap[i % W, i // W] = color
         display.refresh(minimum_frames_per_second=0)
-        z += 1
-        time.sleep(0.02)
+        tick += 1
 
 
 main()

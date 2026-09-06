@@ -25,7 +25,7 @@
       <header class="stamp">
         <p class="sku">Adafruit #4812 · Matrix Portal M4</p>
         <h1>MATRIX ARCADE</h1>
-        <p class="tag">64×32 RGB · pick a game · add more in games.js</p>
+        <p class="tag">64×32 RGB · rainbow sand · tilt or move the pointer</p>
       </header>
 
       <section class="panel" aria-label="LED matrix simulator">
@@ -41,36 +41,24 @@
         </div>
       </section>
 
-      <p id="status" class="status">↑ ↓ pick a game</p>
+      <p id="status" class="status">Move the pointer — sand follows gravity</p>
 
       <dl class="controls">
         <div>
-          <dt>Menu</dt>
-          <dd>↑ ↓ pick · Enter / space / click plays</dd>
-        </div>
-        <div>
-          <dt>Kart</dt>
-          <dd>Tilt or A D steer · space uses an item</dd>
-        </div>
-        <div>
-          <dt>Stack</dt>
-          <dd>Space / ↑ drops the moving bar</dd>
-        </div>
-        <div>
-          <dt>Swing</dt>
-          <dd>↓ picks EASY / NORM / HARD · tilt or ↑ ↓ aim · space swings</dd>
+          <dt>Sand</dt>
+          <dd>No buttons. Move the pointer or tilt. Gravity turns.</dd>
         </div>
         <div>
           <dt>On the real panel</dt>
-          <dd>Copy the <code>circuitpython</code> folder to CIRCUITPY</dd>
+          <dd>Tilt the Matrix Portal. The grains pour. Nothing to click.</dd>
         </div>
       </dl>
     </main>
     <script type="module">
-      import { createMenu } from "./menu.js";
+      import { createSand } from "./sand.js";
       const canvas = document.getElementById("matrix");
       const status = document.getElementById("status");
-      createMenu(canvas, status);
+      createSand(canvas, status);
     </script>
   </body>
 </html>

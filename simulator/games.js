@@ -6,8 +6,10 @@
 import { createTiltKart } from "./game.js";
 import { createStacker } from "./stacker.js";
 import { createSwing } from "./swing.js";
+import { createSand } from "./sand.js";
 
 export const GAMES = [
+  { name: "SAND", create: createSand },
   { name: "KART", create: createTiltKart },
   { name: "STACK", create: createStacker },
   { name: "SWING", create: createSwing },
